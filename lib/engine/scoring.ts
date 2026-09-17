@@ -1,0 +1,268 @@
+import type { NegotiationState, Scenario } from '@/lib/types'
+import { analyze } from './utility'
+
+export interface ScoreLine {
+  key: string
+  label: string
+  max: number
+  earned: number
+  detail: string
+}
+
+export interface Penalty {
+  key: string
+  label: string
+  points: number
+  turnIndex?: number
+}
+
+export interface ScoreReport {
+  total: number
+  lines: ScoreLine[]
+  penalties: Penalty[]
+  headline: string
+  rootCause: string
+  rootCauseTurn?: number
+}
+
+/**
+ * Весь скоринг детерминирован. LLM не участвует в подсчёте баллов —
+ * она только играет персонажа и размечает речевые акты.
+ */
+export function score(scenario: Scenario, state: NegotiationState): ScoreReport {
+  const economy = analyze(scenario, state.deal)
+  const current = economy.current
+  const walkedAway = state.status === 'walkaway'
+  // Раунды кончились без согласия — это НЕ сделка. Итогом становится BATNA,
+  // а не текущее положение условий на столе.
+  const timedOut = state.status === 'timeout'
+  const noAgreement = walkedAway || timedOut
+  const noZopa = !economy.zopaExists
+
+  const lines: ScoreLine[] = []
+  const penalties: Penalty[] = []
+
+  // 1. Ценность сделки относительно собственной BATNA (25).
+  // Эталон — не теоретический максимум, а честная половина создаваемой ценности:
+  // выжать оппонента до точки отказа не является хорошими переговорами.
+  const target = Math.max(1, economy.maxJointSurplus / 2)
+  let dealEarned: number
+  let dealDetail: string
+  if (walkedAway && noZopa) {
+    dealEarned = 25
+    dealDetail = 'Зоны соглашения не существовало. Выход из переговоров был правильным решением.'
+  } else if (timedOut && noZopa) {
+    dealEarned = 18
+    dealDetail = 'Договориться было не о чем, но вы этого не распознали и просто исчерпали раунды.'
+  } else if (walkedAway) {
+    dealEarned = 8
+    dealDetail = 'Вы вышли из переговоров, хотя взаимовыгодная сделка была возможна.'
+  } else if (timedOut) {
+    dealEarned = 2
+    dealDetail = 'Раунды закончились, соглашения нет. Вы остались при своём запасном варианте.'
+  } else if (current.userSurplus < 0) {
+    dealEarned = 0
+    dealDetail = 'Сделка на ' + Math.abs(current.userSurplus).toFixed(1) + ' хуже вашего запасного варианта. Отказ был бы выгоднее.'
+  } else {
+    dealEarned = clamp(current.userSurplus / target) * 25
+    dealDetail = 'Выигрыш к запасному варианту: ' + current.userSurplus.toFixed(1) + ' при справедливом ориентире ' + target.toFixed(1) + '.'
+  }
+  lines.push({ key: 'deal', label: 'Ценность сделки относительно запасного варианта', max: 25, earned: dealEarned, detail: dealDetail })
+
+  // 2. Совместно созданная ценность (20).
+  lines.push({
+    key: 'joint',
+    label: 'Совместно созданная ценность',
+    max: 20,
+    earned: noAgreement ? (noZopa ? 20 : 0) : clamp(economy.efficiency) * 20,
+    detail: noAgreement
+      ? noZopa
+        ? 'Создавать было нечего — интересы сторон не пересекались.'
+        : 'Соглашения нет, поэтому совместная ценность не создана.'
+      : 'Использовано ' + (economy.efficiency * 100).toFixed(0) + '% создаваемой ценности, на столе осталось ' + economy.valueLeftOnTable.toFixed(1) + '.',
+  })
+
+  // 3. Раскрытие интересов (15).
+  const totalInterests = scenario.hiddenInterests.length
+  const revealed = state.revealedInterests.length
+  lines.push({
+    key: 'interests',
+    label: 'Раскрытие интересов',
+    max: 15,
+    earned: totalInterests ? (revealed / totalInterests) * 15 : 15,
+    detail: 'Раскрыто ' + revealed + ' из ' + totalInterests + ' скрытых интересов второй стороны.',
+  })
+
+  // 4. Точность модели оппонента (15) — по Брайеру.
+  const cal = calibration(scenario, state)
+  lines.push({
+    key: 'calibration',
+    label: 'Точность модели второй стороны',
+    max: 15,
+    earned: cal.score * 15,
+    detail: cal.answered
+      ? 'Оценка по Брайеру: ' + cal.brier.toFixed(3) + '. Чем ближе к нулю, тем точнее вы понимали вторую сторону.'
+      : 'Вы не зафиксировали ни одной гипотезы о второй стороне.',
+  })
+
+  // 5. Объективные критерии (10): факт засчитывается, только если условие после него сдвинулось.
+  const effective = state.playedFacts.filter((factId) => {
+    const fact = scenario.facts.find((f) => f.id === factId)
+    if (!fact) return false
+    return fact.strongAgainst.some((issueId) =>
+      state.transcript.some((t) => t.dealChanges.some((c) => c.issueId === issueId)),
+    )
+  })
+  lines.push({
+    key: 'criteria',
+    label: 'Использование объективных критериев',
+    max: 10,
+    earned: clamp(effective.length / 2) * 10,
+    detail: state.playedFacts.length
+      ? 'Приложено фактов: ' + state.playedFacts.length + ', сработало по существу: ' + effective.length + '.'
+      : 'Вы не использовали ни одного объективного критерия.',
+  })
+
+  // 6. Дисциплина уступок (10).
+  const totalMoves = state.unilateralConcessions + state.conditionalOffers
+  const discipline = totalMoves === 0 ? 0.5 : state.conditionalOffers / totalMoves
+  lines.push({
+    key: 'discipline',
+    label: 'Дисциплина уступок',
+    max: 10,
+    earned: discipline * 10,
+    detail: 'Условных обменов: ' + state.conditionalOffers + ', уступок без встречного условия: ' + state.unilateralConcessions + '.',
+  })
+
+  // 7. Рабочие отношения (5).
+  const relation = clamp((state.mood.trust - state.mood.irritation + 100) / 200)
+  lines.push({
+    key: 'relationship',
+    label: 'Сохранение рабочих отношений',
+    max: 5,
+    earned: relation * 5,
+    detail: 'Доверие ' + state.mood.trust.toFixed(0) + ', раздражение ' + state.mood.irritation.toFixed(0) + '.',
+  })
+
+  // Штрафы.
+  if (current.userSurplus < 0 && !noAgreement) {
+    penalties.push({ key: 'below_batna', label: 'Сделка хуже собственного запасного варианта', points: 15 })
+  }
+  const firstUnilateral = state.transcript.find((t) => t.acts.includes('unilateral_concession'))
+  if (firstUnilateral) {
+    penalties.push({
+      key: 'unilateral',
+      label: 'Уступка без встречного условия',
+      points: Math.min(10, state.unilateralConcessions * 4),
+      turnIndex: firstUnilateral.index,
+    })
+  }
+  const attack = state.transcript.find((t) => t.acts.includes('personal_attack'))
+  if (attack) {
+    penalties.push({ key: 'attack', label: 'Переход на личность вместо обсуждения проблемы', points: 6, turnIndex: attack.index })
+  }
+  const earlyOffer = state.transcript.find(
+    (t) => t.role === 'user' && t.index <= 2 && t.dealChanges.length > 0 && state.revealedInterests.length === 0,
+  )
+  if (earlyOffer) {
+    penalties.push({ key: 'early_offer', label: 'Предложение до выяснения интересов', points: 6, turnIndex: earlyOffer.index })
+  }
+
+  const gross = lines.reduce((a, l) => a + l.earned, 0)
+  const totalPenalty = penalties.reduce((a, p) => a + p.points, 0)
+  const total = Math.max(0, Math.min(100, gross - totalPenalty))
+  const d = diagnose(scenario, state, economy, penalties)
+
+  return {
+    total: Math.round(total),
+    lines: lines.map((l) => ({ ...l, earned: Math.round(l.earned * 10) / 10 })),
+    penalties,
+    headline: d.headline,
+    rootCause: d.rootCause,
+    rootCauseTurn: d.rootCauseTurn,
+  }
+}
+
+/** Точность модели второй стороны по Брайеру: штрафует и самоуверенность, и слепоту. */
+function calibration(scenario: Scenario, state: NegotiationState) {
+  const answered = state.hypotheses.filter((h) => scenario.beliefProbes.some((p) => p.id === h.id))
+  if (!answered.length) return { score: 0, brier: 1, answered: 0 }
+  let sum = 0
+  for (const h of answered) {
+    const probe = scenario.beliefProbes.find((p) => p.id === h.id)!
+    const truth = probe.truth ? 1 : 0
+    sum += (h.confidence - truth) ** 2
+  }
+  const brier = sum / answered.length
+  const coverage = answered.length / scenario.beliefProbes.length
+  return { score: clamp(1 - 2 * brier) * (0.5 + 0.5 * coverage), brier, answered: answered.length }
+}
+
+/** Один главный вывод для первого экрана разбора, а не десять метрик. */
+function diagnose(
+  scenario: Scenario,
+  state: NegotiationState,
+  economy: ReturnType<typeof analyze>,
+  penalties: Penalty[],
+): { headline: string; rootCause: string; rootCauseTurn?: number } {
+  const current = economy.current
+
+  if (state.status === 'timeout') {
+    const untouched = scenario.issues.filter((i) => !state.visibleIssues.includes(i.id)).length
+    return {
+      headline: 'Раунды закончились, соглашения нет',
+      rootCause: untouched
+        ? `Разговор не дошёл до предложения. ${untouched} из ${scenario.issues.length} условий вы так и не вывели в обсуждение — торговаться было нечем.`
+        : 'Условия вы открыли, но так и не собрали из них пакет. Соглашение не появляется само из разговора: его нужно предложить.',
+    }
+  }
+
+  if (state.status === 'walkaway') {
+    if (!economy.zopaExists) {
+      return {
+        headline: 'Вы вышли из переговоров — и это было правильно',
+        rootCause:
+          'Зоны соглашения не существовало: любая сделка была бы хуже вашего запасного варианта. Распознать это и уйти — полноценный результат переговоров.',
+      }
+    }
+    const missed = scenario.hiddenInterests.filter((h) => !state.revealedInterests.includes(h.id))
+    return {
+      headline: 'Вы вышли из переговоров, хотя договориться было можно',
+      rootCause: missed.length
+        ? `Взаимовыгодный вариант существовал, но вы его не нашли: ${missed[0].label.toLowerCase()}.`
+        : 'Взаимовыгодный вариант существовал, и вы знали достаточно, чтобы его собрать.',
+    }
+  }
+
+  if (current.userSurplus < 0) {
+    const p = penalties.find((x) => x.key === 'unilateral') ?? penalties.find((x) => x.key === 'early_offer')
+    const missed = scenario.hiddenInterests.filter((h) => !state.revealedInterests.includes(h.id))
+    return {
+      headline: 'Сделка заключена, но она хуже вашего запасного варианта',
+      rootCause: missed.length
+        ? 'Вы отдавали ценность, не выяснив главного: ' + missed[0].label.toLowerCase() + '.'
+        : 'Вы раскрыли интересы, но не заложили их в предложение.',
+      rootCauseTurn: p?.turnIndex,
+    }
+  }
+
+  if (economy.efficiency < 0.6 && economy.paretoImprovementExisted) {
+    return {
+      headline: 'Сделка состоялась, но вы оставили ценность на столе',
+      rootCause:
+        'Существовал вариант, лучший одновременно для вас и для второй стороны. Неиспользованной осталась ценность ' +
+        economy.valueLeftOnTable.toFixed(1) +
+        ' — это цена нераскрытых интересов.',
+      rootCauseTurn: penalties[0]?.turnIndex,
+    }
+  }
+
+  return {
+    headline: 'Сильная сделка: обе стороны выиграли относительно своих запасных вариантов',
+    rootCause:
+      'Вы использовали ' + (economy.efficiency * 100).toFixed(0) + '% создаваемой ценности и вышли на ' +
+      current.userSurplus.toFixed(1) + ' выше своего запасного варианта.',
+  }
+}
+
+const clamp = (n: number) => Math.max(0, Math.min(1, n))

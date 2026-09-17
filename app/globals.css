@@ -1,0 +1,209 @@
+@import "tailwindcss";
+
+/*
+  Дизайн-система «Арены».
+  Светлый профессиональный инструмент: тёплая бумага, глубокий зелёный акцент,
+  табличные цифры во всём, что относится к сделке.
+
+  Три шкалы, из которых собран весь интерфейс:
+  кегли (text-*), скругления (rounded-*) и одна кривая движения (--ease-out).
+  Значений вне шкал быть не должно.
+*/
+
+@theme {
+  --color-paper: #f7f6f2;
+  --color-surface: #ffffff;
+  --color-rail: #f1efe9;
+
+  --color-ink: #1a1c19;
+  --color-ink2: #5b6057;
+  /* Текстовый серый: 4,75:1 на бумаге. Прежний #93968c давал 2,8:1 и не читался. */
+  --color-ink3: #6b6f65;
+  /* Только декор и выключенные состояния, никогда — текст. */
+  --color-ink-faint: #9a9d93;
+
+  --color-line: #e4e1d8;
+  --color-line2: #efede6;
+  /* Граница интерактивных элементов: заметнее, чем разделитель. */
+  --color-line-strong: #cfcabb;
+
+  --color-accent: #1e5c41;
+  --color-accent-soft: #e7efe9;
+  --color-accent-line: #bfd6c7;
+
+  --color-danger: #a33a2a;
+  --color-danger-soft: #f6e9e6;
+
+  --font-sans: 'Golos Text Variable', -apple-system, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, monospace;
+
+  /* Кегли. Служебное — мелкое, разговор — крупный. */
+  --text-label: 11px;
+  --text-label--line-height: 1.3;
+  --text-caption: 12px;
+  --text-caption--line-height: 1.45;
+  --text-small: 13px;
+  --text-small--line-height: 1.45;
+  --text-body: 15px;
+  --text-body--line-height: 1.5;
+  --text-lead: 17px;
+  --text-lead--line-height: 1.5;
+  --text-reply: 21px;
+  --text-reply--line-height: 1.42;
+  --text-title: 20px;
+  --text-title--line-height: 1.25;
+  --text-h2: 28px;
+  --text-h2--line-height: 1.22;
+  --text-h1: 34px;
+  --text-h1--line-height: 1.16;
+  --text-display: 56px;
+  --text-display--line-height: 1;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  /* Одна кривая на весь продукт. */
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: 1.5;
+}
+
+/*
+  Числа в сделке меняются, колонки при этом не прыгают.
+  .num — обычный шрифт с табличными цифрами, им набрано всё, где есть слова.
+  .mono — только чистые числовые значения: баллы, проценты, номера раундов.
+*/
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Служебная подпись. */
+.lbl {
+  font-size: var(--text-label);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--color-ink3);
+  font-weight: 600;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--color-accent-soft);
+}
+
+/* Нажатие: тактильный отклик, без смещения соседей. */
+.press {
+  transition: scale 120ms var(--ease-out), background-color 150ms var(--ease-out),
+    border-color 150ms var(--ease-out), color 150ms var(--ease-out), opacity 150ms var(--ease-out);
+}
+.press:active:not(:disabled) {
+  scale: 0.97;
+}
+
+/* Подписи на карте читаются поверх линий. */
+.map-label {
+  paint-order: stroke;
+  stroke: var(--color-surface);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+/* Новая строка въезжает в соглашение, а не появляется рывком. */
+@keyframes term-enter {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: none; }
+}
+.term-enter { animation: term-enter 320ms var(--ease-out) both; }
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: none; }
+}
+.rise { animation: rise 260ms var(--ease-out) both; }
+
+@keyframes sheet-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+.sheet-in { animation: sheet-in 240ms var(--ease-out) both; }
+
+@keyframes scrim-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.scrim-in { animation: scrim-in 180ms var(--ease-out) both; }
+
+/* Раскрытый интерес: линия прочерчивается, подпись проявляется следом. */
+@keyframes reveal-rule {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+.reveal-rule { transform-origin: left; animation: reveal-rule 420ms var(--ease-out) 120ms both; }
+
+@keyframes reveal-mark {
+  from { opacity: 0; transform: translateX(-6px); }
+  to { opacity: 1; transform: none; }
+}
+.reveal-mark { animation: reveal-mark 260ms var(--ease-out) both; }
+
+/* Реплика второй стороны приходит снизу, как ответ в разговоре. */
+@keyframes line-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.line-in { animation: line-in 300ms var(--ease-out) both; }
+
+/* Точка сделки на карте появляется последней — к ней и ведут глаз. */
+@keyframes map-pop {
+  from { opacity: 0; transform: scale(0.72); }
+  to { opacity: 1; transform: none; }
+}
+.map-pop { animation: map-pop 420ms var(--ease-out) 260ms both; }
+
+/* Появление экрана разбора: ступенями, сверху вниз. */
+.stagger > * { animation: rise 320ms var(--ease-out) both; }
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 80ms; }
+.stagger > *:nth-child(3) { animation-delay: 160ms; }
+.stagger > *:nth-child(4) { animation-delay: 240ms; }
+.stagger > *:nth-child(5) { animation-delay: 320ms; }
+
+/* Пульс ожидания ответа второй стороны. */
+@keyframes typing {
+  0%, 60%, 100% { opacity: 0.25; }
+  30% { opacity: 1; }
+}
+.typing-dot { animation: typing 1.3s infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
