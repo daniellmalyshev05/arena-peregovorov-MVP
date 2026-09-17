@@ -10,14 +10,21 @@ export interface CallResult {
   /** Что именно пошло не так. Пишется в консоль сервера: немые падения — худший вид падений. */
   error?: string
   model?: string
+  /** Какая попытка сработала. Ненулевая означает, что провайдер отверг предыдущую. */
+  attempt?: number
 }
 
 /**
  * Вызов OpenRouter.
  *
- * Две попытки: сначала со строгим JSON-режимом, затем без него — часть моделей
- * и провайдеров отвергает response_format и отдаёт 400, после чего игра
+ * Три попытки: строгий JSON без размышлений, строгий JSON, затем без обоих.
+ * Часть провайдеров отвергает response_format и отдаёт 400, после чего игра
  * незаметно скатывается в офлайн-заглушку.
+ *
+ * `max_tokens` поднят с 800 до 1600, а размышления отключены явно. Это не
+ * перестраховка: на прогоне половина ответов приходила обрезанной посреди
+ * JSON — модель тратила бюджет на размышления и не успевала дописать объект.
+ * Реплика в две фразы столько не занимает, обрыв шёл именно отсюда.
  */
 export async function callOpenRouter(messages: ChatMessage[]): Promise<CallResult> {
   const key = process.env.OPENROUTER_API_KEY
@@ -25,6 +32,7 @@ export async function callOpenRouter(messages: ChatMessage[]): Promise<CallResul
   if (!key) return { content: null, error: 'OPENROUTER_API_KEY не задан' }
 
   const attempts: Array<Record<string, unknown>> = [
+    { response_format: { type: 'json_object' }, reasoning: { enabled: false } },
     { response_format: { type: 'json_object' } },
     {},
   ]
@@ -41,19 +49,19 @@ export async function callOpenRouter(messages: ChatMessage[]): Promise<CallResul
           'Content-Type': 'application/json',
           'X-Title': 'Arena Peregovorov',
         },
-        body: JSON.stringify({ model, messages, temperature: 0.7, max_tokens: 800, ...extra }),
+        body: JSON.stringify({ model, messages, temperature: 0.7, max_tokens: 1600, ...extra }),
         signal: controller.signal,
       })
 
       if (!res.ok) {
         const body = await res.text().catch(() => '')
-        lastError = `HTTP ${res.status}${i === 0 ? ' (со строгим JSON)' : ''}: ${body.slice(0, 300)}`
+        lastError = `HTTP ${res.status} (попытка ${i + 1}): ${body.slice(0, 300)}`
         continue
       }
 
       const data = await res.json()
       const content = data?.choices?.[0]?.message?.content
-      if (typeof content === 'string' && content.trim()) return { content, model }
+      if (typeof content === 'string' && content.trim()) return { content, model, attempt: i }
 
       lastError = 'провайдер вернул пустой ответ: ' + JSON.stringify(data).slice(0, 300)
     } catch (e) {

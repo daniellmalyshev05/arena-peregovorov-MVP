@@ -60,6 +60,9 @@ export async function POST(req: Request) {
   let llm: LlmTurnOutput | null = null
   let source: 'model' | 'offline' = 'offline'
   let fallbackReason: string | undefined
+  /** Что пришлось починить в ответе модели и с какой попытки он пришёл. */
+  let repairs: string[] = []
+  let attempt: number | undefined
 
   // Онлайн — главный режим. Запасной включается либо переменной окружения,
   // либо вручную на время демонстрации.
@@ -84,6 +87,8 @@ export async function POST(req: Request) {
       if (parsed.turn) {
         llm = parsed.turn
         source = 'model'
+        repairs = parsed.repairs
+        attempt = call.attempt
         if (parsed.repairs.length) {
           console.warn('[арена] ответ модели починен:', parsed.repairs.join('; '))
         }
@@ -126,5 +131,7 @@ export async function POST(req: Request) {
     source,
     fallbackReason,
     leaks: leaks.length ? leaks.map((l) => l.label) : undefined,
+    repairs: repairs.length ? repairs : undefined,
+    attempt,
   })
 }
