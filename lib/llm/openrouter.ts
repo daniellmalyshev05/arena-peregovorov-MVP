@@ -17,14 +17,16 @@ export interface CallResult {
 /**
  * Вызов OpenRouter.
  *
- * Три попытки: строгий JSON без размышлений, строгий JSON, затем без обоих.
- * Часть провайдеров отвергает response_format и отдаёт 400, после чего игра
- * незаметно скатывается в офлайн-заглушку.
+ * Две попытки: строгий JSON, затем без него — часть провайдеров отвергает
+ * response_format и отдаёт 400, после чего игра незаметно скатывается
+ * в офлайн-заглушку.
  *
- * `max_tokens` поднят с 800 до 1600, а размышления отключены явно. Это не
- * перестраховка: на прогоне половина ответов приходила обрезанной посреди
- * JSON — модель тратила бюджет на размышления и не успевала дописать объект.
- * Реплика в две фразы столько не занимает, обрыв шёл именно отсюда.
+ * `max_tokens` поднят с 800 до 1600. Это не перестраховка: на живом прогоне
+ * половина ответов приходила обрезанной посреди JSON, всегда на одном и том же
+ * поле. Реплика в две фразы столько не занимает — упиралось именно в потолок.
+ *
+ * Поле `reasoning` провайдер отвергает с 400, поэтому его здесь нет: лишняя
+ * попытка стоила бы по одному холостому запросу на каждый ход.
  */
 export async function callOpenRouter(messages: ChatMessage[]): Promise<CallResult> {
   const key = process.env.OPENROUTER_API_KEY
@@ -32,7 +34,6 @@ export async function callOpenRouter(messages: ChatMessage[]): Promise<CallResul
   if (!key) return { content: null, error: 'OPENROUTER_API_KEY не задан' }
 
   const attempts: Array<Record<string, unknown>> = [
-    { response_format: { type: 'json_object' }, reasoning: { enabled: false } },
     { response_format: { type: 'json_object' } },
     {},
   ]

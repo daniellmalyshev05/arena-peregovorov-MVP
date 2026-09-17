@@ -257,6 +257,27 @@ function diagnose(
     }
   }
 
+  // Самый коварный исход: пирог максимальный, метрики зелёные, а забрали вы
+  // треть своей доли. Без этой ветки разбор хвалил бы за сделку, в которой
+  // игрока обобрали, — и жюри поймало бы несоответствие за секунду.
+  const fairShare = Math.max(1, economy.maxJointSurplus / 2)
+  if (current.userSurplus < fairShare * 0.6) {
+    const p = penalties.find((x) => x.key === 'unilateral') ?? penalties[0]
+    return {
+      headline: 'Ценность создана, но досталась не вам',
+      rootCause:
+        'Общий результат близок к пределу возможного, и вторая сторона выиграла. Но из ' +
+        fairShare.toFixed(1) +
+        ', на которые вы могли рассчитывать при равном делении, вы взяли ' +
+        current.userSurplus.toFixed(1) +
+        '. ' +
+        (penalties.some((x) => x.key === 'unilateral')
+          ? 'Вы отдавали условия, не прося ничего взамен.'
+          : 'Почти каждое улучшение пакета доставалось второй стороне.'),
+      rootCauseTurn: p?.turnIndex,
+    }
+  }
+
   return {
     headline: 'Сильная сделка: обе стороны выиграли относительно своих запасных вариантов',
     rootCause:
