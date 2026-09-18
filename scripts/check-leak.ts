@@ -11,7 +11,7 @@
  * под эти же кейсы, и ни на одной из них тревоги быть не должно.
  */
 import { scenarios } from '@/lib/scenarios'
-import { createInitialState } from '@/lib/engine/state'
+import { createInitialState, grantLeaked } from '@/lib/engine/state'
 import { detectLeak } from '@/lib/llm/leak'
 
 let failed = 0
@@ -90,5 +90,40 @@ for (const s of scenarios) {
   check(leaks.some((l) => l.kind === 'issue'), 'неоткрытое условие, поднятое моделью, не поймано')
 }
 
-console.log(failed === 0 ? '\n✓ детектор ловит утечку и молчит на честных репликах' : `\n${failed} провалов`)
+// 6. Проговорённое засчитывается раскрытым.
+//    Иначе реплика и документ расходятся на экране: вторая сторона называет
+//    интерес вслух, плашки нет, строка в соглашении не появляется, а разбор
+//    потом снимает баллы за нераскрытое.
+{
+  const s = scenarios[0]
+  const state = createInitialState(s)
+  // Ход игрока в стенограмме нужен: плашка «Раскрыт интерес» рисуется по нему.
+  state.transcript.push({
+    index: 1, role: 'user', text: 'Понимаю вас.', acts: [],
+    dealChanges: [], revealed: [], timestamp: Date.now(),
+  })
+
+  const secret = s.hiddenInterests[0]
+  const leaks = detectLeak(s, state, secret.revealLine)
+  check(leaks.length > 0, 'реплика с секретом не опознана как утечка')
+
+  const before = state.revealedInterests.length
+  const { granted, hint } = grantLeaked(s, state, leaks)
+  check(granted.includes(secret.id), 'проговорённый интерес не засчитан раскрытым')
+  check(state.revealedInterests.length > before, 'раскрытие не попало в состояние')
+  check(Boolean(hint), 'для проговорённого интереса не предложена гипотеза')
+  check(
+    state.transcript[1].revealed.includes(secret.id),
+    'раскрытие не записано в ход игрока — плашки на экране не будет',
+  )
+  if (secret.revealsIssue) {
+    check(state.visibleIssues.includes(secret.revealsIssue), 'условие интереса не выведено в соглашение')
+  }
+
+  // Повторно то же самое не засчитывается.
+  check(grantLeaked(s, state, leaks).granted.length === 0, 'раскрытие засчитано дважды')
+  check(grantLeaked(s, state, []).granted.length === 0, 'без утечки что-то засчитано')
+}
+
+console.log(failed === 0 ? '\n✓ детектор ловит утечку, молчит на честных репликах и не даёт документу разойтись с разговором' : `\n${failed} провалов`)
 process.exit(failed === 0 ? 0 : 1)

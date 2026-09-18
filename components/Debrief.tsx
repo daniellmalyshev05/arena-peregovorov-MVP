@@ -9,7 +9,21 @@ import { Portrait } from './Portrait'
 import { ArenaMap } from './ArenaMap'
 import type { RunRecord } from '@/lib/profile'
 
-const STEPS = ['Что получилось', 'Где вы оказались', 'Где вы ошиблись', 'Что было скрыто', 'Что можно было иначе']
+/**
+ * Третий шаг называется по тому, что на нём реально показано.
+ *
+ * Разбор не имеет права называть ошибкой ход, который на соседнем таймлайне
+ * помечен находкой. Если настоящей ошибки в партии нет, шаг показывает
+ * поворотный ход и называется соответственно.
+ */
+const steps = (fault: boolean) => [
+  'Что получилось',
+  'Где вы оказались',
+  fault ? 'Где вы ошиблись' : 'Что решило исход',
+  'Что было скрыто',
+  'Что можно было иначе',
+]
+const STEP_COUNT = 5
 
 /** Балл набирается на глазах — это итог партии, а не просто число на экране. */
 function useCountUp(value: number, duration = 900) {
@@ -72,15 +86,40 @@ export function Debrief({
       const el = e.target as HTMLElement | null
       if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return
       if (e.key === 'ArrowLeft') setStep((v) => Math.max(0, v - 1))
-      if (e.key === 'ArrowRight') setStep((v) => Math.min(STEPS.length - 1, v + 1))
+      if (e.key === 'ArrowRight') setStep((v) => Math.min(STEP_COUNT - 1, v + 1))
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
   const economy = analyze(scenario, state.deal)
-  const focus = score.rootCauseTurn ?? candidates[0]?.turnIndex
-  const moment = focus !== undefined ? momentContext(state, focus) : undefined
   const userTurns = state.transcript.filter((t) => t.role === 'user')
+
+  /**
+   * Ход годится в «где вы ошиблись», только если таймлайн под заголовком не
+   * помечает его находкой. Два кандидата на откат выбирают момент формулой от
+   * длины партии («здесь можно было копнуть глубже») или берут последнюю
+   * реплику, когда предложений не было, — и в удачной партии это ровно тот ход,
+   * который раскрыл интерес. Разбор не имеет права называть его ошибкой.
+   */
+  const blameable = (index?: number) => {
+    if (index === undefined) return false
+    const t = userTurns.find((x) => x.index === index)
+    if (!t) return false
+    if (t.acts.includes('unilateral_concession') || t.acts.includes('personal_attack')) return true
+    return !(t.revealed.length > 0 || t.acts.includes('objective_criterion'))
+  }
+  const fault = [
+    score.rootCauseTurn,
+    ...candidates.filter((c) => c.kind !== 'missed_interest').map((c) => c.turnIndex),
+  ].find(blameable)
+  // Ошибки нет — показываем поворот: ход, который открыл интерес или сдвинул условия.
+  const turning =
+    userTurns.find((t) => t.revealed.length > 0)?.index ??
+    [...userTurns].reverse().find((t) => t.dealChanges.length > 0)?.index
+  const focus = fault ?? turning
+  const isFault = fault !== undefined
+  const STEPS = steps(isFault)
+  const moment = focus !== undefined ? momentContext(state, focus) : undefined
   const total = useCountUp(score.total)
   const grown = useGrown()
 
@@ -103,14 +142,14 @@ export function Debrief({
           <span className="hidden truncate text-small text-ink2 xl:inline">{scenario.title}</span>
         </div>
         <span className="num ml-auto shrink-0 text-small text-ink2">
-          шаг {step + 1} из {STEPS.length}
+          шаг {step + 1} из {STEP_COUNT}
         </span>
       </header>
 
       {/* Полоса шагов. Раньше переключение пряталось бледным текстом в шапке
           и его просто не находили — теперь это явная навигация с прогрессом. */}
       <nav aria-label="Шаги разбора" className="flex shrink-0 overflow-x-auto border-b border-line bg-surface">
-        {STEPS.map((label, i) => {
+        {STEPS.map((label: string, i: number) => {
           const done = i < step
           const current = i === step
           return (
@@ -159,8 +198,8 @@ export function Debrief({
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
         </button>
         <button
-          onClick={() => setStep((v) => Math.min(STEPS.length - 1, v + 1))}
-          disabled={step === STEPS.length - 1}
+          onClick={() => setStep((v) => Math.min(STEP_COUNT - 1, v + 1))}
+          disabled={step === STEP_COUNT - 1}
           aria-label="Следующий шаг"
           className="press absolute right-2 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-line bg-surface text-ink2 shadow-sm transition-colors hover:border-accent-line hover:text-ink disabled:pointer-events-none disabled:opacity-0 xl:flex"
         >
@@ -278,7 +317,7 @@ export function Debrief({
               onClick={() => setStep(2)}
               className="press mt-7 flex h-11 items-center gap-2 rounded-md bg-accent px-5 font-semibold text-white hover:bg-accent/92"
             >
-              Где вы ошиблись
+              {STEPS[2]}
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
             </button>
           </div>
@@ -287,9 +326,13 @@ export function Debrief({
         {/* Шаг 3 */}
         {step === 2 && (
           <div className="rise mx-auto max-w-[1180px]">
-            <div className="lbl mb-3">Где вы ошиблись</div>
+            <div className="lbl mb-3">{STEPS[2]}</div>
             <h1 className="max-w-[760px] text-h2 font-semibold tracking-[-0.016em] text-balance">
-              {moment?.turn ? 'Один ход изменил экономику сделки' : 'Переговоры прошли без резких поворотов'}
+              {!moment?.turn
+                ? 'Переговоры прошли без резких поворотов'
+                : isFault
+                  ? 'Один ход изменил экономику сделки'
+                  : 'Один ход развернул переговоры'}
             </h1>
 
             {/* Таймлайн */}
@@ -327,7 +370,7 @@ export function Debrief({
                     <span className="num text-caption text-ink3">раунд {Math.floor(moment.turn.index / 2) + 1}</span>
                     <span className="h-1 w-1 rounded-full bg-line-strong" />
                     <span className={`text-caption font-semibold ${momentBad ? 'text-danger' : 'text-accent'}`}>
-                      ключевой момент
+                      {isFault ? 'ключевой момент' : 'поворотный ход'}
                     </span>
                   </div>
                   <div className="flex flex-col gap-3.5">
@@ -354,7 +397,7 @@ export function Debrief({
                 </div>
 
                 <div className="self-start rounded-lg border border-line bg-surface px-5 py-5 sm:px-[22px]">
-                  <div className="lbl mb-4">Что это стоило</div>
+                  <div className="lbl mb-4">{isFault ? 'Что это стоило' : 'Чем это обернулось'}</div>
                   <div className="flex flex-col gap-3 text-small leading-snug">
                     <div>
                       <div className="lbl mb-1">Совместная ценность</div>
@@ -517,8 +560,8 @@ export function Debrief({
                 Вернитесь в один момент и скажите иначе
               </h1>
               <p className="mt-2.5 max-w-[680px] text-body leading-relaxed text-ink2 text-pretty">
-                {scenario.persona.name.split(' ')[0]}, его интересы и всё состояние переговоров восстановятся на этот
-                раунд. Изменится только ваша формулировка.
+                {scenario.persona.name.split(' ')[0]}, раскрытые интересы и всё состояние переговоров
+                восстановятся на этот раунд. Изменится только ваша формулировка.
               </p>
             </div>
 

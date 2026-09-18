@@ -1,5 +1,5 @@
 import type { NegotiationState, Scenario } from '@/lib/types'
-import { analyze } from './utility'
+import { analyze, enumerateReachable, zopa } from './utility'
 
 export interface ScoreLine {
   key: string
@@ -39,6 +39,19 @@ export function score(scenario: Scenario, state: NegotiationState): ScoreReport 
   const noAgreement = walkedAway || timedOut
   const noZopa = !economy.zopaExists
 
+  // Сделка могла существовать в кейсе и при этом быть недостижимой за столом:
+  // предложить можно только те условия, которые выведены в разговор. Выход из
+  // переговоров оценивается по достижимому набору, а не по полному перебору —
+  // иначе сценарий, который учит вовремя уходить, наказывает именно за это.
+  const reachableZopa = zopa(enumerateReachable(scenario, state.visibleIssues)).length > 0
+  const discovery = scenario.hiddenInterests.length
+    ? state.revealedInterests.length / scenario.hiddenInterests.length
+    : 1
+  // Выход обоснован, если из открытого ничего не собиралось. Насколько
+  // обоснованно решение принято — показывает глубина разведки: уйти, не задав
+  // ни одного вопроса, это не распознанная безвыходность, а просто уход.
+  const rightfulExit = walkedAway && !noZopa && !reachableZopa
+
   const lines: ScoreLine[] = []
   const penalties: Penalty[] = []
 
@@ -54,9 +67,20 @@ export function score(scenario: Scenario, state: NegotiationState): ScoreReport 
   } else if (timedOut && noZopa) {
     dealEarned = 18
     dealDetail = 'Договориться было не о чем, но вы этого не распознали и просто исчерпали раунды.'
+  } else if (rightfulExit) {
+    dealEarned = 25 * discovery
+    dealDetail =
+      'Ни одно предложение из открытых условий не перебивало ваш запасной вариант — выйти было правильно. ' +
+      (discovery >= 1
+        ? 'Вы дошли до всех интересов второй стороны и приняли решение на полной картине.'
+        : 'Раскрыто интересов второй стороны: ' +
+          state.revealedInterests.length +
+          ' из ' +
+          scenario.hiddenInterests.length +
+          '. За нераскрытыми сделка могла найтись — цена решения считается по тому, насколько полно вы её проверили.')
   } else if (walkedAway) {
     dealEarned = 8
-    dealDetail = 'Вы вышли из переговоров, хотя взаимовыгодная сделка была возможна.'
+    dealDetail = 'Вы вышли из переговоров, хотя взаимовыгодная сделка была достижима из того, что уже лежало на столе.'
   } else if (timedOut) {
     dealEarned = 2
     dealDetail = 'Раунды закончились, соглашения нет. Вы остались при своём запасном варианте.'
@@ -74,11 +98,19 @@ export function score(scenario: Scenario, state: NegotiationState): ScoreReport 
     key: 'joint',
     label: 'Совместно созданная ценность',
     max: 20,
-    earned: noAgreement ? (noZopa ? 20 : 0) : clamp(economy.efficiency) * 20,
+    earned: noAgreement
+      ? noZopa
+        ? 20
+        : rightfulExit
+          ? 20 * discovery
+          : 0
+      : clamp(economy.efficiency) * 20,
     detail: noAgreement
       ? noZopa
         ? 'Создавать было нечего — интересы сторон не пересекались.'
-        : 'Соглашения нет, поэтому совместная ценность не создана.'
+        : rightfulExit
+          ? 'Из открытых условий создавать было нечего. Ценность в кейсе была, но за теми интересами, до которых разговор не дошёл.'
+          : 'Соглашения нет, поэтому совместная ценность не создана.'
       : 'Использовано ' + (economy.efficiency * 100).toFixed(0) + '% создаваемой ценности, на столе осталось ' + economy.valueLeftOnTable.toFixed(1) + '.',
   })
 
@@ -171,7 +203,7 @@ export function score(scenario: Scenario, state: NegotiationState): ScoreReport 
   const gross = lines.reduce((a, l) => a + l.earned, 0)
   const totalPenalty = penalties.reduce((a, p) => a + p.points, 0)
   const total = Math.max(0, Math.min(100, gross - totalPenalty))
-  const d = diagnose(scenario, state, economy, penalties)
+  const d = diagnose(scenario, state, economy, penalties, reachableZopa)
 
   return {
     total: Math.round(total),
@@ -204,6 +236,7 @@ function diagnose(
   state: NegotiationState,
   economy: ReturnType<typeof analyze>,
   penalties: Penalty[],
+  reachableZopa: boolean,
 ): { headline: string; rootCause: string; rootCauseTurn?: number } {
   const current = economy.current
 
@@ -226,11 +259,21 @@ function diagnose(
       }
     }
     const missed = scenario.hiddenInterests.filter((h) => !state.revealedInterests.includes(h.id))
+    if (!reachableZopa) {
+      // Из того, что лежало на столе, сделки не было — уйти было верно.
+      // Но часть стола игрок мог и не открыть, и об этом честнее сказать сразу.
+      return {
+        headline: 'Вы вышли из переговоров — из того, что было на столе, это было правильно',
+        rootCause: missed.length
+          ? `Ни одно предложение из открытых условий не перебивало ваш запасной вариант. Но ${missed.length} из ${scenario.hiddenInterests.length} интересов второй стороны так и остались закрытыми, а за ними стол выглядел иначе: ${missed[0].label.toLowerCase()}.`
+          : 'Вы открыли всё, что вторая сторона скрывала, и ни один вариант не перебил ваш запасной. Распознать это и уйти — полноценный результат переговоров.',
+      }
+    }
     return {
       headline: 'Вы вышли из переговоров, хотя договориться было можно',
       rootCause: missed.length
-        ? `Взаимовыгодный вариант существовал, но вы его не нашли: ${missed[0].label.toLowerCase()}.`
-        : 'Взаимовыгодный вариант существовал, и вы знали достаточно, чтобы его собрать.',
+        ? `Взаимовыгодный вариант был достижим из уже открытых условий, но вы его не собрали. Ближе всего к нему: ${missed[0].label.toLowerCase()}.`
+        : 'Взаимовыгодный вариант был достижим из уже открытых условий, и вы знали достаточно, чтобы его собрать.',
     }
   }
 

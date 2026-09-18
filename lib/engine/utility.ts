@@ -65,6 +65,31 @@ export function zopa(points: DealPoint[]): DealPoint[] {
   return points.filter((p) => p.userSurplus >= 0 && p.opponentSurplus >= 0)
 }
 
+/**
+ * Перебор только тех наборов условий, которые игрок реально мог предложить.
+ *
+ * Условия, не выведенные в разговор, стоят в статус-кво: шторка сборки
+ * предложения их не показывает, а `sanitizeOffer` всё равно выбросит. Разница
+ * между этим перебором и полным — это и есть цена нераскрытых интересов,
+ * и она нужна, чтобы отличить «сделки не существовало» от «сделка была,
+ * но вы её не открыли».
+ */
+export function enumerateReachable(scenario: Scenario, visibleIssues: string[]): DealPoint[] {
+  const combos: Deal[] = [{}]
+  for (const issue of scenario.issues) {
+    const options = visibleIssues.includes(issue.id)
+      ? issue.options
+      : issue.options.filter((o) => o.id === issue.defaultOptionId)
+    const next: Deal[] = []
+    for (const partial of combos) {
+      for (const option of options) next.push({ ...partial, [issue.id]: option.id })
+    }
+    combos.length = 0
+    combos.push(...next)
+  }
+  return combos.map((deal) => describe(scenario, deal))
+}
+
 /** Граница Парето: варианты, которые нельзя улучшить одной стороне, не ухудшив другой. */
 export function paretoFrontier(points: DealPoint[]): DealPoint[] {
   const frontier = points.filter(

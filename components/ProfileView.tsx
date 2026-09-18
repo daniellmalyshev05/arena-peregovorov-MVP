@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import type { Scenario } from '@/lib/types'
 import { clearRuns, loadRuns, patterns, type RunRecord } from '@/lib/profile'
-import { adaptationLevel, computeAdaptation } from '@/lib/engine/adaptive'
+import { adaptationLevel, adaptationTargets, computeAdaptation } from '@/lib/engine/adaptive'
 import { count, plural } from '@/lib/plural'
 
 const STATUS_LABEL: Record<string, string> = {
@@ -115,6 +115,45 @@ export function ProfileView({ scenarios }: { scenarios: Scenario[] }) {
                 </section>
               )}
             </div>
+
+            {/* Прогрессия. В тренажёрах прокачивают персонажа — здесь растёт
+                вторая сторона, и это единственное место, где рост видно целиком. */}
+            <section className="mt-10">
+              <div className="lbl mb-3 border-b border-line pb-2">Какой будет вторая сторона</div>
+              {adaptation.targets.length === 0 ? (
+                <p className="rounded-md border border-line bg-surface px-5 py-4 leading-relaxed text-ink2">
+                  Играет по базовым настройкам кейса. Жёстче она станет адресно — там, где привычка
+                  повторяется: уступки без встречного условия поднимают её аппетит, редкие вопросы
+                  закрывают её интересы, ставка без опоры на факты делает её упрямее.
+                </p>
+              ) : (
+                <div className="rounded-md border border-accent-line bg-accent-soft px-5 py-4">
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span className="font-semibold text-accent">Тяжелее: {adaptationLevel(adaptation)}</span>
+                    <span className="num text-small text-ink2">
+                      уровень притязаний +{adaptation.aspiration.toFixed(1)}, порог отказа +{adaptation.floor.toFixed(1)}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-small leading-snug text-ink2">
+                    Вторая сторона стала сильнее не вообще, а против вас. Подкрутка ограничена сверху:
+                    проверено, что и в таком виде кейс проходим.
+                  </p>
+                  <ul className="mt-3.5 flex flex-col gap-2">
+                    {adaptationTargets(adaptation).map((t) => (
+                      <li key={t.id} className="flex gap-2.5">
+                        <span aria-hidden className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+                        {/* Одной строкой: причина уже названа выше, в «над чем
+                            работать», — здесь важно поведение, а не повтор диагноза. */}
+                        <span className="min-w-0 text-small leading-snug">
+                          <span className="font-semibold">{t.title}</span>
+                          <span className="text-ink2"> — {t.cause}.</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </section>
 
             <section className="mt-10">
               <div className="lbl mb-2 border-b border-line pb-2">История</div>

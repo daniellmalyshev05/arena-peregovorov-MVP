@@ -165,8 +165,15 @@ export function applyTurn(input: ApplyTurnInput): ApplyTurnResult {
     }
   }
 
-  // 2. Изменения сделки. Явное предложение приоритетнее того, что послышалось модели.
-  const incoming = explicitOffer ?? llm.proposedDeal ?? {}
+  // 2. Изменения сделки.
+  //
+  // В соглашение попадает ТОЛЬКО пакет, собранный игроком в шторке. Раньше сюда
+  // же уходило `llm.proposedDeal`: если вторая сторона предлагала условия, выгодные
+  // ей самой, движок считал её же выигрыш, ставил `accept` и переписывал соглашение,
+  // а разница уровней записывалась игроку как уступка без встречного условия —
+  // за ход, которого он не делал. Предложение второй стороны живёт в её реплике,
+  // а документ меняется только по соглашению обеих сторон.
+  const incoming = explicitOffer ?? {}
   const dealChanges: Turn['dealChanges'] = []
   let verdict: OfferVerdict | undefined
 
@@ -237,6 +244,51 @@ export function applyTurn(input: ApplyTurnInput): ApplyTurnResult {
     : undefined
 
   return { state, hint, verdict }
+}
+
+/**
+ * Проговорился — значит раскрыл.
+ *
+ * Движок засчитывает раскрытие, только если речевой акт подошёл. Но модель
+ * может выдать секрет прозой, оставив `revealedInterests` пустым: формально
+ * чисто, а по сути игрок услышал ответ, которого не заслужил. Детектор утечки
+ * это ловит — и раньше только писал в лог.
+ *
+ * Молчать нельзя: реплика и документ расходятся прямо на экране, а потом
+ * «Раскрытие интересов» снимает баллы за то, что вторая сторона уже сказала
+ * вслух. Из двух вариантов — сделать вид, что не прозвучало, или признать —
+ * честен второй: информация вышла, значит она на столе.
+ *
+ * Состояние здесь уже после хода, поэтому законно раскрытое повторно не берётся.
+ */
+export function grantLeaked(
+  scenario: Scenario,
+  state: NegotiationState,
+  leaks: { kind: 'interest' | 'issue'; id: string }[],
+): { granted: string[]; hint?: string } {
+  if (!leaks.length) return { granted: [] }
+
+  const lastUserTurn = [...state.transcript].reverse().find((t) => t.role === 'user')
+  const granted: string[] = []
+
+  for (const leak of leaks) {
+    if (leak.kind === 'interest') {
+      const interest = scenario.hiddenInterests.find((h) => h.id === leak.id)
+      if (!interest || state.revealedInterests.includes(interest.id)) continue
+      state.revealedInterests.push(interest.id)
+      granted.push(interest.id)
+      lastUserTurn?.revealed.push(interest.id)
+      if (interest.revealsIssue && !state.visibleIssues.includes(interest.revealsIssue)) {
+        state.visibleIssues.push(interest.revealsIssue)
+      }
+    } else if (!state.visibleIssues.includes(leak.id)) {
+      // Условие, которое вторая сторона назвала сама, тоже оказывается на столе.
+      if (scenario.issues.some((i) => i.id === leak.id)) state.visibleIssues.push(leak.id)
+    }
+  }
+
+  const first = granted.length ? scenario.hiddenInterests.find((h) => h.id === granted[0]) : undefined
+  return { granted, hint: first?.hypothesis }
 }
 
 export function walkAway(state: NegotiationState): NegotiationState {

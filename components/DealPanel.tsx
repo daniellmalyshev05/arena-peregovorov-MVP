@@ -41,7 +41,12 @@ export function DealPanel({
   const fill = Math.max(2, Math.min(100, ((u - batna + 22) / 55) * 100))
   const zeroAt = (22 / 55) * 100
 
-  const noted = state.hypotheses.length
+  // Гипотезы — четверть скоринга, и до них доходят случайно: всплывающая
+  // подсказка живёт до следующего хода и покрывает не все утверждения, а вкладка
+  // «Досье» раньше ничем о себе не напоминала. Счётчик висит всегда и подсвечен,
+  // пока не поставлено ни одной оценки, — это единственный полный путь к ним.
+  const probes = scenario.beliefProbes.length
+  const noted = state.hypotheses.filter((h) => scenario.beliefProbes.some((p) => p.id === h.id)).length
 
   return (
     <aside className={`min-h-0 flex-col border-l border-line bg-surface ${className || 'flex'}`}>
@@ -62,18 +67,22 @@ export function DealPanel({
           }`}
         >
           Досье
-          {noted > 0 && (
-            <span className="num flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-line px-[5px] text-label font-semibold text-ink2">
-              {noted}
+          {probes > 0 && (
+            <span
+              className={`num flex h-[17px] items-center justify-center rounded-full px-[6px] text-label font-semibold ${
+                noted === 0 ? 'bg-accent-soft text-accent' : 'bg-line text-ink2'
+              }`}
+            >
+              {noted}/{probes}
             </span>
           )}
           {tab === 'dossier' && <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-accent" />}
         </button>
-        {tab === 'deal' && (
-          <span className="num ml-auto whitespace-nowrap text-caption text-ink3">
-            согласовано {settled} из {scenario.issues.length}
-          </span>
-        )}
+        <span className="num ml-auto whitespace-nowrap text-caption text-ink3">
+          {tab === 'deal'
+            ? `согласовано ${settled} из ${scenario.issues.length}`
+            : `оценено ${noted} из ${probes}`}
+        </span>
       </div>
 
       {tab === 'dossier' ? (

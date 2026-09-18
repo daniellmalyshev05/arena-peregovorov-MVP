@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Scenario } from '@/lib/types'
-import { applyConfig, defaultConfig, DIFFICULTY_LABELS, TONES, type AdminConfig } from '@/lib/admin/config'
+import { applyConfig, defaultConfig, DIFFICULTY_LABELS, matchQuery, TONES, type AdminConfig } from '@/lib/admin/config'
+import { matchScenarios } from '@/lib/admin/match'
 import { encodeConfig } from '@/lib/admin/link'
 import { clearConfig, loadConfig, loadMode, saveConfig, saveMode, type OpponentMode } from '@/lib/admin/storage'
 import { auditScenario } from '@/lib/engine/audit'
@@ -24,12 +25,16 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
   const [mode, setMode] = useState<OpponentMode>('auto')
   const [origin, setOrigin] = useState('')
   const [copied, setCopied] = useState(false)
+  // Администратор выбрал кейс сам — подбор больше не переключает его под руками.
+  const [manual, setManual] = useState(false)
+  const [showLibrary, setShowLibrary] = useState(false)
 
   useEffect(() => {
     const stored = loadConfig()
     if (stored && scenarios.some((s) => s.id === stored.baseScenarioId)) {
       setCfg(stored)
       setSaved(true)
+      setManual(true)
     }
     setMode(loadMode())
     setOrigin(window.location.origin)
@@ -39,6 +44,32 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
   const base = scenarios.find((s) => s.id === cfg.baseScenarioId) ?? scenarios[0]
   const tuned = useMemo(() => applyConfig(base, cfg), [base, cfg])
   const audit = useMemo(() => auditScenario(tuned), [tuned])
+
+  // Контекст администратора — запрос, а не подпись: по нему выбирается кейс.
+  const query = matchQuery(cfg)
+  const ranked = useMemo(() => matchScenarios(scenarios, query), [scenarios, query])
+  const match = ranked[0]
+
+  /** Переносит контекст и сложность на другой кейс, остальное берёт из него. */
+  const useCase = (next: Scenario) =>
+    setCfg((c) => ({
+      ...defaultConfig(next),
+      sphere: c.sphere,
+      topic: c.topic,
+      opponentGoal: c.opponentGoal,
+      difficulty: c.difficulty,
+    }))
+
+  // Пока администратор не выбрал кейс руками, подбор ведёт его сам —
+  // но только когда совпадение действительно есть.
+  useEffect(() => {
+    if (manual || !ready) return
+    if (match.confidence === 'слабое') return
+    if (match.scenario.id === cfg.baseScenarioId) return
+    useCase(match.scenario)
+    setSaved(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manual, ready, match.scenario.id, match.confidence])
 
   const set = <K extends keyof AdminConfig>(k: K, v: AdminConfig[K]) => {
     setCfg((c) => ({ ...c, [k]: v }))
@@ -84,32 +115,101 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
           {/* Настройки */}
           <div className="flex flex-col gap-6">
             <div>
-              <div className="lbl mb-2">Кейс-основа</div>
-              <div className="flex flex-col gap-1.5">
-                {scenarios.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => { setCfg({ ...defaultConfig(s) }); setSaved(false) }}
-                    className={`press rounded-md border px-3.5 py-2.5 text-left ${
-                      s.id === cfg.baseScenarioId ? 'border-accent bg-accent-soft' : 'border-line bg-surface hover:border-accent-line'
-                    }`}
-                  >
-                    <div className={`text-small ${s.id === cfg.baseScenarioId ? 'font-semibold text-accent' : ''}`}>{s.title}</div>
-                    <div className="mt-0.5 text-caption text-ink3">{s.subtitle}</div>
-                  </button>
-                ))}
+              <div className="lbl mb-2">Контекст симуляции</div>
+              <p className="mb-3 text-caption leading-snug text-ink3">
+                Опишите ситуацию своими словами. По описанию подбирается кейс из библиотеки — тот, у которого
+                совпадают предмет торга, роли и интересы сторон.
+              </p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="lbl mb-1.5 block">Сфера</span>
+                  <input className={field} value={cfg.sphere} onChange={(e) => set('sphere', e.target.value)} placeholder="Промышленность, строительство, закупки…" />
+                </label>
+                <label className="block">
+                  <span className="lbl mb-1.5 block">Тема переговоров</span>
+                  <input className={field} value={cfg.topic} onChange={(e) => set('topic', e.target.value)} placeholder="О чём торг" />
+                </label>
               </div>
+              <label className="mt-4 block">
+                <span className="lbl mb-1.5 block">Чего добивается вторая сторона</span>
+                <textarea className={field} rows={2} value={cfg.opponentGoal} onChange={(e) => set('opponentGoal', e.target.value)} placeholder="Например: поднять тариф на 15% и не обсуждать объёмы" />
+              </label>
+
+              {/* Результат подбора. Администратор видит не только какой кейс выбран,
+                  но и по каким словам — иначе выбор выглядит как случайность. */}
+              <div
+                className={`mt-4 rounded-md border px-4 py-3.5 ${
+                  !manual && match.confidence === 'слабое' ? 'border-line bg-rail' : 'border-accent-line bg-accent-soft'
+                }`}
+              >
+                <div className="lbl mb-1.5">
+                  {manual
+                    ? 'Кейс выбран вручную'
+                    : !query
+                      ? 'Кейс не подобран'
+                      : match.confidence === 'слабое'
+                        ? 'Близкого кейса не нашлось'
+                        : `Подобран кейс · совпадение ${match.confidence}`}
+                </div>
+                <div className="text-small font-semibold">{base.title}</div>
+                <div className="mt-0.5 text-caption text-ink3">{base.subtitle}</div>
+                <p className="mt-2 text-caption leading-snug text-ink2">
+                  {manual
+                    ? 'Подбор по описанию отключён: кейс держится тот, который вы выбрали.'
+                    : !query
+                      ? 'Опишите ситуацию выше — или выберите кейс из библиотеки сами.'
+                      : match.confidence === 'слабое'
+                        ? 'Библиотека покрывает промышленный и закупочный контур. Описание не совпало ни с одним кейсом — выберите ближайший сами, иначе участник получит симуляцию не про то.'
+                        : `Совпало по словам: ${match.matched.join(', ')}.`}
+                </p>
+                <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                  <button
+                    onClick={() => setShowLibrary((v) => !v)}
+                    className="press text-caption font-semibold text-accent hover:underline"
+                  >
+                    {showLibrary ? 'Свернуть библиотеку' : 'Выбрать кейс самому'}
+                  </button>
+                  {manual && (
+                    <button
+                      onClick={() => { setManual(false); setSaved(false) }}
+                      className="press text-caption text-ink3 hover:text-accent"
+                    >
+                      Вернуть подбор по описанию
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {showLibrary && (
+                <div className="mt-3 flex flex-col gap-1.5">
+                  {ranked.map((m) => (
+                    <button
+                      key={m.scenario.id}
+                      onClick={() => { setManual(true); useCase(m.scenario); setSaved(false) }}
+                      className={`press rounded-md border px-3.5 py-2.5 text-left ${
+                        m.scenario.id === cfg.baseScenarioId ? 'border-accent bg-accent-soft' : 'border-line bg-surface hover:border-accent-line'
+                      }`}
+                    >
+                      <div className="flex items-baseline gap-2">
+                        <span className={`text-small ${m.scenario.id === cfg.baseScenarioId ? 'font-semibold text-accent' : ''}`}>
+                          {m.scenario.title}
+                        </span>
+                        {query && (
+                          <span className="lbl ml-auto shrink-0">совпадение {m.confidence}</span>
+                        )}
+                      </div>
+                      <div className="mt-0.5 text-caption text-ink3">{m.scenario.subtitle}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="block">
-                <span className="lbl mb-1.5 block">Сфера</span>
-                <input className={field} value={cfg.sphere} onChange={(e) => set('sphere', e.target.value)} placeholder="Промышленность, ИТ, закупки…" />
-              </label>
-              <label className="block">
-                <span className="lbl mb-1.5 block">Тема переговоров</span>
-                <input className={field} value={cfg.topic} onChange={(e) => set('topic', e.target.value)} placeholder="О чём торг" />
-              </label>
+            <div className="border-t border-line pt-6">
+              <div className="lbl mb-1">Настройка подобранного кейса</div>
+              <p className="text-caption leading-snug text-ink3">
+                Эти ручки меняют математику симуляции, а не подписи: последствия каждой видно справа.
+              </p>
             </div>
 
             <div>
@@ -158,16 +258,10 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                 <input className={field} value={cfg.opponentName} onChange={(e) => set('opponentName', e.target.value)} />
               </label>
               <label className="block">
-                <span className="lbl mb-1.5 block">Его роль</span>
+                <span className="lbl mb-1.5 block">Роль второй стороны</span>
                 <input className={field} value={cfg.opponentRole} onChange={(e) => set('opponentRole', e.target.value)} />
               </label>
             </div>
-
-            <label className="block">
-              <span className="lbl mb-1.5 block">Чего он добивается</span>
-              <textarea className={field} rows={2} value={cfg.opponentGoal} onChange={(e) => set('opponentGoal', e.target.value)} />
-              <span className="mt-1.5 block text-caption text-ink3">Становится его публичной позицией — тем, с чего он начнёт разговор.</span>
-            </label>
 
             <div>
               <div className="lbl mb-2">Режим оппонента</div>

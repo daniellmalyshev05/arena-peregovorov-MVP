@@ -142,7 +142,17 @@ export function ArenaMap({
         <line x1={M.left} x2={W - M.right} y1={y(uB)} y2={y(uB)} stroke="var(--color-ink-faint)" strokeWidth="1" strokeDasharray="4 4" />
         <line x1={x(oB)} x2={x(oB)} y1={M.top} y2={H - M.bottom} stroke="var(--color-ink-faint)" strokeWidth="1" strokeDasharray="4 4" />
         <text x={M.left + 4} y={y(uB) - 6} className="map-label" fontSize="10.5" fill="var(--color-ink3)">ваш запасной вариант</text>
-        <text x={x(oB) + 5} y={M.top + 10} className="map-label" fontSize="10.5" fill="var(--color-ink3)">его запасной вариант</text>
+        {/* Подпись уходит влево от линии, когда справа для неё нет места. */}
+        <text
+          x={x(oB) + 168 > W - M.right ? x(oB) - 5 : x(oB) + 5}
+          y={M.top + 10}
+          textAnchor={x(oB) + 168 > W - M.right ? 'end' : 'start'}
+          className="map-label"
+          fontSize="10.5"
+          fill="var(--color-ink3)"
+        >
+          запасной вариант второй стороны
+        </text>
 
         {/* Опорные стратегии */}
         {model.refs.map((r) => (

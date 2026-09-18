@@ -11,6 +11,7 @@ import type { Archetype, Scenario } from '@/lib/types'
 export interface AdminConfig {
   /** Кейс из библиотеки, который берётся за основу. */
   baseScenarioId: string
+  /** Сфера и тема, какими их описал администратор. По ним подбирается кейс. */
   sphere: string
   topic: string
   /** 1 — учебный, 5 — почти невозможный. */
@@ -18,7 +19,10 @@ export interface AdminConfig {
   tone: Archetype
   opponentName: string
   opponentRole: string
-  /** Чего добивается оппонент — становится его публичной позицией. */
+  /**
+   * Чего добивается вторая сторона. Участвует в подборе кейса и уходит модели
+   * отдельной установкой — публичную позицию кейса не подменяет.
+   */
   opponentGoal: string
   rounds: number
 }
@@ -35,15 +39,22 @@ export const DIFFICULTY_LABELS = ['', 'Учебная', 'Лёгкая', 'Раб�
 export function defaultConfig(base: Scenario): AdminConfig {
   return {
     baseScenarioId: base.id,
-    sphere: base.subtitle,
-    topic: base.title,
+    // Сфера и тема — это запрос на подбор кейса, а не его подпись, поэтому
+    // пустые: администратор описывает ситуацию своими словами с чистого листа.
+    sphere: '',
+    topic: '',
     difficulty: 3,
     tone: base.archetype,
     opponentName: base.persona.name,
     opponentRole: base.persona.role,
-    opponentGoal: base.persona.openingPosition,
+    opponentGoal: '',
     rounds: base.maxRounds,
   }
+}
+
+/** Строка запроса для подбора кейса: всё, чем администратор описал ситуацию. */
+export function matchQuery(cfg: AdminConfig): string {
+  return [cfg.sphere, cfg.topic, cfg.opponentGoal].map((s) => s.trim()).filter(Boolean).join(' ')
 }
 
 /**
@@ -61,22 +72,24 @@ export function applyConfig(base: Scenario, cfg: AdminConfig): Scenario {
 
   const name = cfg.opponentName.trim() || base.persona.name
   const role = cfg.opponentRole.trim() || base.persona.role
-  const goal = cfg.opponentGoal.trim() || base.persona.openingPosition
 
   return {
     ...base,
     id: base.id,
-    title: cfg.topic.trim() || base.title,
-    subtitle: cfg.sphere.trim() || base.subtitle,
+    // Заголовок, подзаголовок, бриф и публичная позиция остаются от кейса.
+    // Раньше сюда подставлялись слова администратора, и участник получал шапку
+    // про один предмет торга, бриф про другой и первую реплику про третий.
+    // Контекст администратора теперь выбирает кейс (см. lib/admin/match.ts),
+    // а не переписывает его подписи.
     archetype: cfg.tone,
     maxRounds: clamp(Math.round(cfg.rounds), 4, 24),
     userBatna: { ...base.userBatna, value: userBatna },
     opponentBatna: { ...base.opponentBatna, value: opponentBatna },
+    organizerNote: cfg.opponentGoal.trim() || undefined,
     persona: {
       ...base.persona,
       name,
       role,
-      openingPosition: goal,
       // Портрет привязан к имени: своё имя — свои инициалы вместо чужого лица.
       portrait: name === base.persona.name ? base.persona.portrait : undefined,
     },

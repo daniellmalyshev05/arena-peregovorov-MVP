@@ -1,4 +1,4 @@
-import type { NegotiationState, Scenario } from '@/lib/types'
+import type { Archetype, NegotiationState, Scenario } from '@/lib/types'
 import type { OfferVerdict } from '@/lib/engine/state'
 import { optionOf } from '@/lib/engine/utility'
 
@@ -6,6 +6,25 @@ import { optionOf } from '@/lib/engine/utility'
  * Системный промпт собирается заново каждый ход из текущего состояния мира.
  * Модель видит скрытые интересы, но получает жёсткий запрет выдавать их без нужного вопроса.
  */
+/**
+ * Как архетип звучит в речи.
+ *
+ * Тон — настройка администратора, и он меняет математику уступок в движке.
+ * Но `speechStyle` пишется под родной архетип кейса и остаётся прежним, поэтому
+ * без этих строк партнёрский тон у жёсткого персонажа менял только числа:
+ * движок уступал по-партнёрски, а реплики звучали по-прежнему жёстко.
+ */
+const ARCHETYPE_BEHAVIOUR: Record<Archetype, string> = {
+  hard_negotiator:
+    'держишь позицию долго и уступаешь по чуть-чуть; доверие тебя почти не размягчает; полученную уступку принимаешь как должное и сразу проверяешь, нельзя ли получить следующую',
+  anxious_executive:
+    'давление и обвинения выбивают тебя из колеи и ты защищаешься; зато на спокойный тон и признание твоих трудностей откликаешься быстро и открываешься',
+  false_urgency:
+    'требуешь много и шумно, постоянно создаёшь ощущение, что решение нужно прямо сейчас; но к концу разговора твои требования резко сдуваются',
+  partner:
+    'идёшь навстречу охотно, но только в обмен: на встречное условие отвечаешь своим шагом, а уступку без встречного предложения просто принимаешь и дальше не двигаешься',
+}
+
 export function buildSystemPrompt(
   scenario: Scenario,
   state: NegotiationState,
@@ -38,7 +57,10 @@ export function buildSystemPrompt(
 КТО ТЫ
 ${p.name}, ${p.role}, ${p.company}.
 Манера речи: ${p.speechStyle}
-Твоя публичная позиция: ${p.openingPosition}
+Как ты торгуешься (если расходится с манерой речи, верно это): ${ARCHETYPE_BEHAVIOUR[scenario.archetype]}.
+Твоя публичная позиция: ${p.openingPosition}${
+    scenario.organizerNote ? `\nЧего ты добиваешься в этом разговоре: ${scenario.organizerNote}` : ''
+  }
 Твоя альтернатива, если сделки не будет: ${scenario.opponentBatna.label}
 
 С КЕМ ГОВОРИШЬ

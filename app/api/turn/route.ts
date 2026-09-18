@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getScenario } from '@/lib/scenarios'
-import { applyTurn, evaluateOffer, sanitizeOffer, type LlmTurnOutput } from '@/lib/engine/state'
+import { applyTurn, evaluateOffer, grantLeaked, sanitizeOffer, type LlmTurnOutput } from '@/lib/engine/state'
 import { buildSystemPrompt, buildUserMessage, buildVerdictInstruction } from '@/lib/llm/prompt'
 import { parseLlmTurn } from '@/lib/llm/schema'
 import { callOpenRouter, type ChatMessage } from '@/lib/llm/openrouter'
@@ -124,13 +124,19 @@ export async function POST(req: Request) {
   const leaks = source === 'model' ? detectLeak(scenario, result.state, llm.reply) : []
   for (const leak of leaks) console.warn(describeLeak(leak, llm.reply))
 
+  // Проговорённое засчитывается раскрытым: иначе плашки «Раскрыт интерес» нет,
+  // строка в соглашении не появляется, а в разборе игроку снимают баллы за
+  // интерес, который вторая сторона назвала сама.
+  const leaked = grantLeaked(scenario, result.state, leaks)
+
   return NextResponse.json({
     state: result.state,
-    hint: result.hint,
+    hint: result.hint ?? leaked.hint,
     verdict: result.verdict ?? verdict?.verdict,
     source,
     fallbackReason,
     leaks: leaks.length ? leaks.map((l) => l.label) : undefined,
+    leakedGranted: leaked.granted.length ? leaked.granted : undefined,
     repairs: repairs.length ? repairs : undefined,
     attempt,
   })

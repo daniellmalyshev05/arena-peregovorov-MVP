@@ -14,6 +14,7 @@ import { DealPanel } from './DealPanel'
 import { Dossier } from './Dossier'
 import { OfferSheet } from './OfferSheet'
 import { Portrait } from './Portrait'
+import { decapitalize } from '@/lib/text'
 
 export function ArenaClient({ scenario }: { scenario: Scenario }) {
   const [state, setState] = useState<NegotiationState>(() => createInitialState(scenario))
@@ -398,7 +399,8 @@ export function ArenaClient({ scenario }: { scenario: Scenario }) {
                     )}
                     <p className="mt-2.5 text-small leading-relaxed text-ink2">
                       Напротив вас {scenario.persona.name}, {scenario.persona.role}.
-                      Его позиция: {scenario.persona.openingPosition.toLowerCase()}. Первое слово за ним.
+                      Позиция второй стороны: {decapitalize(scenario.persona.openingPosition)}. Первое
+                      слово за ней.
                     </p>
                   </div>
                   <button

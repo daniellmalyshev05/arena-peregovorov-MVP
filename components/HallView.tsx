@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import type { Scenario } from '@/lib/types'
 import { loadRuns, patterns, suggestScenario, type RunRecord } from '@/lib/profile'
+import { loadConfig } from '@/lib/admin/storage'
+import { DIFFICULTY_LABELS } from '@/lib/admin/config'
 import { count } from '@/lib/plural'
 import { Mark } from './Mark'
 import { Portrait } from './Portrait'
@@ -16,7 +18,15 @@ const SKILLS: Record<string, string> = {
 
 export function HallView({ scenarios }: { scenarios: Scenario[] }) {
   const [runs, setRuns] = useState<RunRecord[]>([])
-  useEffect(() => setRuns(loadRuns()), [])
+  // Настройка администратора живёт в браузере и применяется молча. Холл обязан
+  // о ней сказать: иначе карточка обещает библиотечный кейс, а внутри открывается
+  // настроенный — с другой сложностью, тоном и второй стороной.
+  const [tuned, setTuned] = useState<{ id: string; difficulty: number } | null>(null)
+  useEffect(() => {
+    setRuns(loadRuns())
+    const cfg = loadConfig()
+    if (cfg) setTuned({ id: cfg.baseScenarioId, difficulty: cfg.difficulty })
+  }, [])
 
   const scored = runs.filter((r) => !r.training)
   const best = (id: string) => {
@@ -123,6 +133,11 @@ export function HallView({ scenarios }: { scenarios: Scenario[] }) {
                         </span>
                         {isNext && (
                           <span className="lbl rounded-sm bg-accent-soft px-1.5 py-0.5 text-accent">рекомендуем</span>
+                        )}
+                        {tuned?.id === s.id && (
+                          <span className="lbl rounded-sm border border-line-strong px-1.5 py-0.5 text-ink3">
+                            настроено · {DIFFICULTY_LABELS[tuned.difficulty]?.toLowerCase() ?? 'сложность изменена'}
+                          </span>
                         )}
                       </span>
                       <span className="mt-1 block text-small text-ink2">
