@@ -58,8 +58,8 @@ export function clearConfig() {
 }
 
 /** Возвращает сценарий с применённым контекстом администратора, если он задан для этого кейса. */
-export function tunedScenario(base: Scenario): { scenario: Scenario; configured: boolean } {
+export function tunedScenario(base: Scenario): { scenario: Scenario; configured: boolean; cfg?: AdminConfig } {
   const cfg = loadConfig()
   if (!cfg || cfg.baseScenarioId !== base.id) return { scenario: base, configured: false }
-  return { scenario: applyConfig(base, cfg), configured: true }
+  return { scenario: applyConfig(base, cfg), configured: true, cfg }
 }

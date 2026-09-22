@@ -8,6 +8,7 @@ import { rewindCandidates } from '@/lib/engine/rewind'
 import { buildRun, loadRuns, saveRun, type RunRecord } from '@/lib/profile'
 import { computeAdaptation } from '@/lib/engine/adaptive'
 import { loadMode, type OpponentMode } from '@/lib/admin/storage'
+import { clearSession, loadSession, saveSession } from '@/lib/session'
 import { Debrief } from './Debrief'
 import { Compare } from './Compare'
 import { DealPanel } from './DealPanel'
@@ -15,12 +16,66 @@ import { Dossier } from './Dossier'
 import { OfferSheet } from './OfferSheet'
 import { Portrait } from './Portrait'
 import { decapitalize } from '@/lib/text'
+import { count } from '@/lib/plural'
 
-export function ArenaClient({ scenario }: { scenario: Scenario }) {
+/**
+ * Тур по столу переговоров.
+ *
+ * Три подсказки вместо модального онбординга: они не закрывают экран, их
+ * можно пропустить одной кнопкой и вернуть кнопкой «?». Тексты написаны так,
+ * чтобы работать и на узком экране, где боковые зоны открываются кнопками.
+ */
+const TOUR = [
+  {
+    title: 'Цель и факты',
+    detail:
+      'Слева — ваша цель, запасной вариант и факты (на телефоне их открывает кнопка «Цель и факты»). Факт можно приложить к ответу: это объективный критерий, и он считается в разборе.',
+  },
+  {
+    title: 'Разговор',
+    detail:
+      'Здесь вы говорите своими словами. Верный вопрос открывает интерес второй стороны — и в соглашении появляется новое условие, которым можно торговать.',
+  },
+  {
+    title: 'Соглашение и пакет',
+    detail:
+      'Справа — проект соглашения и кнопка «Собрать предложение» (на телефоне — кнопка «Соглашение»). Пакет уходит целиком: вторая сторона отвечает на него одним решением.',
+  },
+]
+
+const TOUR_KEY = 'arena.tour.v1'
+
+function tourSeen(): boolean {
+  try {
+    return localStorage.getItem(TOUR_KEY) === 'done'
+  } catch {
+    return true
+  }
+}
+
+function markTourSeen() {
+  try {
+    localStorage.setItem(TOUR_KEY, 'done')
+  } catch {
+    /* приватный режим — тур просто покажется снова */
+  }
+}
+
+export function ArenaClient({ scenario, configCode }: { scenario: Scenario; configCode?: string }) {
   const [state, setState] = useState<NegotiationState>(() => createInitialState(scenario))
 
   // Снапшот состояния ПЕРЕД каждым ходом игрока — на них держится развилка.
   const [snapshots, setSnapshots] = useState<{ turnIndex: number; state: NegotiationState }[]>([])
+  // Снапшоты зачётной сессии отдельно: после возврата в ленте копятся снапшоты
+  // второй версии, и «Переиграть другой момент» раньше мог восстановить мир из неё.
+  const [baselineSnaps, setBaselineSnaps] = useState<{ turnIndex: number; state: NegotiationState }[]>([])
+  const snapsRef = useRef(snapshots)
+  useEffect(() => {
+    snapsRef.current = snapshots
+  }, [snapshots])
+  // Последний отправленный пакет: шторка открывается с ним, а не с исходных условий.
+  const [lastOffer, setLastOffer] = useState<Deal | undefined>()
+  const [sheetSeed, setSheetSeed] = useState<Deal | undefined>()
   const [phase, setPhase] = useState<'live' | 'debrief' | 'compare'>('live')
   const [baseline, setBaseline] = useState<{ state: NegotiationState; score: ScoreReport } | null>(null)
   const [branch, setBranch] = useState<{ state: NegotiationState; score: ScoreReport } | null>(null)
@@ -35,6 +90,8 @@ export function ArenaClient({ scenario }: { scenario: Scenario }) {
   const [sheet, setSheet] = useState(false)
   const [pendingFact, setPendingFact] = useState<string | undefined>()
   const [confirmExit, setConfirmExit] = useState(false)
+  // Вторая сторона согласилась: ждём решения игрока — фиксировать или продолжать.
+  const [pendingDeal, setPendingDeal] = useState(false)
   // Отправленная реплика показывается сразу, не дожидаясь ответа сервера.
   const [pending, setPending] = useState<string | null>(null)
   const [intro, setIntro] = useState(true)
@@ -44,11 +101,40 @@ export function ArenaClient({ scenario }: { scenario: Scenario }) {
   const [panel, setPanel] = useState<'brief' | 'deal' | null>(null)
   // Переговоры закончились: экран уходит, разбор въезжает.
   const [closing, setClosing] = useState(false)
+  // Партия поднята из хранилища после перезагрузки — об этом честно говорим в ленте.
+  const [restored, setRestored] = useState(false)
+  // Короткий тур по столу: три подсказки при первом входе, дальше по кнопке «?».
+  const [tour, setTour] = useState<number | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const feedRef = useRef<HTMLDivElement>(null)
 
+  // Подпись сессии: кейс вместе с настройкой администратора. Другая настройка —
+  // другая симуляция, поднимать в ней сохранённый разговор нельзя.
+  const signature = `${scenario.id}|${configCode ?? ''}`
+
   // Оппонент помнит прошлые переговоры: профиль делает его жёстче там, где игрок слаб.
   const adaptation = useMemo(() => computeAdaptation(history), [history])
+
+  // Встречное показывается сразу после ответа на пакет: чем оно отличается от
+  // отправленного. Условия считает движок, поэтому взятое как есть оно принимается.
+  const counterView = useMemo(() => {
+    const counter = state.standingCounter
+    const answered = state.transcript[state.transcript.length - 2]
+    if (!counter || state.status !== 'active' || answered?.role !== 'user' || !answered.verdict || answered.verdict === 'accept') {
+      return null
+    }
+    const from = lastOffer ?? state.deal
+    const rows = scenario.issues
+      .filter((i) => from[i.id] !== counter[i.id])
+      .map((i) => ({
+        label: i.label,
+        from: i.options.find((o) => o.id === from[i.id])?.label ?? '',
+        to: i.options.find((o) => o.id === counter[i.id])?.label ?? '',
+      }))
+    return rows.length ? { deal: counter, rows } : null
+  }, [lastOffer, scenario.issues, state.deal, state.standingCounter, state.status, state.transcript])
+
+  const openers = scenario.openers ?? []
 
   // На стол выкладываются первые три карты из колоды сценария.
   const hand = scenario.facts.slice(0, 3)
@@ -57,7 +143,30 @@ export function ArenaClient({ scenario }: { scenario: Scenario }) {
   useEffect(() => {
     setHistory(loadRuns())
     setMode(loadMode())
-  }, [])
+    // Жюри открывает тренажёр раньше, чем видит демонстрацию: первый вход
+    // объясняет три зоны стола. Второй раз тур сам не появляется.
+    if (!tourSeen()) setTour(0)
+    // Незаконченная партия переживает перезагрузку страницы: на демо это
+    // разница между «продолжаем» и «начинаем сначала при жюри».
+    const saved = loadSession(signature)
+    if (saved) {
+      setState(saved.state)
+      setSnapshots(saved.snapshots ?? [])
+      setLastOffer(saved.lastOffer)
+      setIntro(false)
+      setRestored(true)
+      // Пауза после согласия переживает перезагрузку вместе с партией.
+      if (saved.state.status === 'deal') setPendingDeal(true)
+    }
+  }, [signature])
+
+  // Сохраняется только живая партия зачётной сессии: разбор и развилка
+  // восстанавливаются расчётом, а не из хранилища.
+  useEffect(() => {
+    if (phase !== 'live' || replay) return
+    if (state.status === 'active' || pendingDeal) saveSession({ signature, state, snapshots, lastOffer })
+    else clearSession()
+  }, [lastOffer, pendingDeal, phase, replay, signature, snapshots, state])
 
   useEffect(() => {
     feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: 'smooth' })
@@ -65,6 +174,7 @@ export function ArenaClient({ scenario }: { scenario: Scenario }) {
 
   const finish = useCallback(
     (final: NegotiationState) => {
+      clearSession()
       const report = computeScore(scenario, final)
       setHistory(saveRun(buildRun(scenario, final, report, Boolean(replay))))
       if (replay) {
@@ -72,6 +182,7 @@ export function ArenaClient({ scenario }: { scenario: Scenario }) {
         setPhase('compare')
       } else {
         setBaseline({ state: final, score: report })
+        setBaselineSnaps(snapsRef.current)
         setPhase('debrief')
       }
     },
@@ -84,6 +195,7 @@ export function ArenaClient({ scenario }: { scenario: Scenario }) {
       setBusy(true)
       setPending(payload.userText)
       setIntro(false)
+      setRestored(false)
       const before = { ...state.deal }
       const visibleBefore = [...state.visibleIssues]
       setSnapshots((prev) => [...prev, { turnIndex: state.transcript.length, state }])
@@ -93,6 +205,7 @@ export function ArenaClient({ scenario }: { scenario: Scenario }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             scenarioId: scenario.id,
+            config: configCode,
             state,
             userText: payload.userText,
             explicitOffer: payload.explicitOffer,
@@ -112,14 +225,17 @@ export function ArenaClient({ scenario }: { scenario: Scenario }) {
           console.warn('[арена] ответ пришёл от офлайн-движка:', data.fallbackReason)
         }
         setPendingFact(undefined)
-        if (data.state.status !== 'active') {
+        // Сделку закрывает игрок, а не первый принятый пакет. Пока раунды не
+        // кончились, после согласия предлагается выбор: зафиксировать или
+        // продолжить обсуждение — остальные условия ещё на столе.
+        const outOfRounds = data.state.round > scenario.maxRounds
+        if (data.state.status === 'deal' && !outOfRounds) {
+          setPendingDeal(true)
+        } else if (data.state.status !== 'active') {
           setClosing(true)
           setTimeout(() => finish(data.state), 900)
         }
-        if (data.hint) {
-          const probe = scenario.beliefProbes.find((p) => data.hint.includes(p.text.slice(0, 12)))
-          setHint({ text: data.hint, probeId: probe?.id })
-        }
+        if (data.hint) setHint({ text: data.hint, probeId: data.hintProbe })
       } catch {
         setPending(null)
         setHint({ text: 'Связь прервалась, ответ не дошёл. Отправьте реплику ещё раз.' })
@@ -128,7 +244,7 @@ export function ArenaClient({ scenario }: { scenario: Scenario }) {
         inputRef.current?.focus()
       }
     },
-    [adaptation, busy, finish, mode, pendingFact, scenario.beliefProbes, scenario.id, state],
+    [adaptation, busy, configCode, finish, mode, pendingFact, scenario.id, scenario.maxRounds, state],
   )
 
   const setConfidence = (id: string, confidence: number) => {
@@ -151,13 +267,15 @@ export function ArenaClient({ scenario }: { scenario: Scenario }) {
         candidates={rewindCandidates(scenario, baseline.state)}
         history={history}
         onRewind={(turnIndex) => {
-          const snap = snapshots.find((x) => x.turnIndex === turnIndex)
+          const snap = baselineSnaps.find((x) => x.turnIndex === turnIndex)
           if (!snap) return
           const originalLine =
             baseline.state.transcript.find((t) => t.index === turnIndex && t.role === 'user')?.text ?? ''
           setReplay({ turnIndex, before: originalLine })
           setState(snap.state)
-          setSnapshots(snapshots.filter((x) => x.turnIndex < turnIndex))
+          setSnapshots(baselineSnaps.filter((x) => x.turnIndex < turnIndex))
+          setLastOffer(undefined)
+          setPendingDeal(false)
           setPrevDeal({})
           setNewIssues([])
           setHint(null)
@@ -221,7 +339,11 @@ export function ArenaClient({ scenario }: { scenario: Scenario }) {
 
   // Левая колонка нужна в двух местах: в сетке на широком экране и в шторке на узком.
   const briefColumn = (
-    <div className="flex min-h-0 flex-col border-r border-line bg-rail">
+    <div
+      className={`flex min-h-0 flex-col border-r border-line bg-rail ${
+        tour === 0 ? 'outline outline-2 -outline-offset-2 outline-accent' : ''
+      }`}
+    >
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 lg:p-[18px]">
         <div>
           <div className="lbl mb-[7px] flex items-center gap-1.5">
@@ -288,6 +410,8 @@ export function ArenaClient({ scenario }: { scenario: Scenario }) {
               <button
                 onClick={() => {
                   setConfirmExit(false)
+                  // Момент выхода — тоже точка возврата: разбор предлагает его переиграть.
+                  setSnapshots((prev) => [...prev, { turnIndex: state.transcript.length, state }])
                   const final = walkAway(state)
                   setState(final)
                   setClosing(true)
@@ -345,6 +469,13 @@ export function ArenaClient({ scenario }: { scenario: Scenario }) {
               <span className="sm:hidden">Не в зачёт</span>
             </span>
           )}
+          <button
+            onClick={() => setTour(0)}
+            aria-label="Как устроен стол переговоров"
+            className="press flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-line-strong text-caption font-semibold text-ink2 hover:border-accent hover:bg-accent-soft hover:text-accent"
+          >
+            ?
+          </button>
           <span className="num whitespace-nowrap text-small text-ink3">
             раунд {Math.min(state.round, scenario.maxRounds)} из {scenario.maxRounds}
           </span>
@@ -512,13 +643,98 @@ export function ArenaClient({ scenario }: { scenario: Scenario }) {
                 )}
               </div>
             )}
+            {/* Согласие получено: закрыть сделку или торговаться дальше — решает игрок. */}
+            {pendingDeal && !busy && (
+              <div className="rise ml-11 max-w-[600px] rounded-md border border-accent-line bg-accent-soft px-4 py-3.5">
+                <p className="text-small leading-snug">
+                  Вторая сторона согласна на этот пакет. Условия уже в соглашении: можно зафиксировать сделку
+                  или продолжить обсуждение — {count(scenario.maxRounds - state.round + 1, ['раунд', 'раунда', 'раундов'])} ещё есть.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    onClick={() => {
+                      setPendingDeal(false)
+                      setClosing(true)
+                      setTimeout(() => finish(state), 600)
+                    }}
+                    className="press flex h-9 items-center rounded-md bg-accent px-4 text-caption font-semibold text-white hover:bg-accent/92"
+                  >
+                    Зафиксировать сделку
+                  </button>
+                  <button
+                    onClick={() => {
+                      setPendingDeal(false)
+                      setState((s) => ({ ...s, status: 'active' }))
+                      inputRef.current?.focus()
+                    }}
+                    className="press flex h-9 items-center rounded-md border border-line bg-surface px-4 text-caption text-ink2 hover:border-accent hover:text-accent"
+                  >
+                    Продолжить обсуждение
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Встречное предложение: условия посчитаны движком, его можно взять в шторку как есть. */}
+            {counterView && !busy && (
+              <div className="rise ml-11 max-w-[600px] rounded-md border border-line bg-surface px-4 py-3">
+                <div className="lbl mb-2">Встречное предложение</div>
+                <div className="flex flex-col">
+                  {counterView.rows.map((r) => (
+                    <div
+                      key={r.label}
+                      className="flex flex-col gap-0.5 border-b border-line2 py-[7px] last:border-0 sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,auto)] sm:items-baseline sm:gap-3"
+                    >
+                      <span className="text-small text-ink2">{r.label}</span>
+                      <span className="num flex flex-wrap items-baseline gap-x-[7px] text-small sm:justify-end sm:text-right">
+                        <span className="text-ink3 line-through decoration-line-strong">{r.from}</span>
+                        <span className="font-semibold">{r.to}</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() => {
+                    setSheetSeed(counterView.deal)
+                    setSheet(true)
+                  }}
+                  className="press mt-3 flex h-8 items-center gap-1.5 rounded-sm border border-accent-line bg-accent-soft px-3 text-caption font-semibold text-accent hover:border-accent"
+                >
+                  Открыть в шторке
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+                </button>
+              </div>
+            )}
             <div className="h-2 shrink-0" />
           </div>
 
           {/* Ввод */}
           <div className="flex shrink-0 flex-col gap-[11px] border-t border-line2 px-6 pb-5 pt-[14px] lg:px-10">
-            {(pendingFact || offline) && (
+            {/* С чего начать. Первый ход решает, куда пойдёт разговор, а человек,
+                открывший тренажёр сам, чаще всего пишет «здравствуйте». Это приёмы,
+                а не подсказки к ответу: скрытых интересов здесь нет. */}
+            {openers.length > 0 && state.round === 1 && !text && !busy && state.status === 'active' && (
+              <div className="rise flex flex-wrap items-center gap-x-3 gap-y-2">
+                <span className="lbl shrink-0">С чего начать</span>
+                {openers.map((o) => (
+                  <button
+                    key={o}
+                    onClick={() => {
+                      setText(o)
+                      inputRef.current?.focus()
+                    }}
+                    className="press max-w-full truncate rounded-sm border border-line bg-surface px-2.5 py-1 text-caption text-ink2 hover:border-accent hover:bg-accent-soft hover:text-accent"
+                  >
+                    {o}
+                  </button>
+                ))}
+              </div>
+            )}
+            {(pendingFact || offline || restored) && (
               <div className="flex items-center gap-3">
+                {restored && (
+                  <span className="text-caption text-ink-faint">партия восстановлена после перезагрузки</span>
+                )}
                 {pendingFact && (
                   <span className="num text-caption font-semibold text-accent">факт уйдёт вместе с ответом</span>
                 )}
@@ -534,7 +750,11 @@ export function ArenaClient({ scenario }: { scenario: Scenario }) {
                 )}
               </div>
             )}
-            <div className="flex items-end gap-[10px]">
+            <div
+              className={`flex items-end gap-[10px] rounded-md ${
+                tour === 1 ? 'outline outline-2 outline-offset-4 outline-accent' : ''
+              }`}
+            >
               <textarea
                 ref={inputRef}
                 value={text}
@@ -573,8 +793,46 @@ export function ArenaClient({ scenario }: { scenario: Scenario }) {
         </div>
 
         {/* Соглашение / досье */}
-        {renderDeal('hidden md:flex')}
+        {renderDeal(`hidden md:flex ${tour === 2 ? 'outline outline-2 -outline-offset-2 outline-accent' : ''}`)}
       </div>
+
+      {/* Панель тура стоит сверху: снизу поле ввода, и подсказка не должна
+          закрывать кнопку «Отправить» — иначе она мешает ровно там, где учит. */}
+      {tour !== null && (
+        <div className="rise fixed inset-x-4 top-24 z-50 mx-auto max-w-[560px] rounded-lg border border-line bg-surface px-5 py-4 shadow-[0_14px_44px_rgba(26,28,25,0.16)] md:top-20">
+          <div className="flex items-baseline gap-3">
+            <span className="lbl">{TOUR[tour].title}</span>
+            <span className="num ml-auto shrink-0 text-caption text-ink3">{tour + 1} из {TOUR.length}</span>
+          </div>
+          <p className="mt-2 text-small leading-relaxed text-ink2">{TOUR[tour].detail}</p>
+          <div className="mt-3.5 flex items-center gap-2">
+            <button
+              onClick={() => {
+                if (tour + 1 < TOUR.length) {
+                  setTour(tour + 1)
+                } else {
+                  setTour(null)
+                  markTourSeen()
+                }
+              }}
+              className="press flex h-9 items-center rounded-md bg-accent px-4 text-caption font-semibold text-white hover:bg-accent/92"
+            >
+              {tour + 1 < TOUR.length ? 'Дальше' : 'Понятно'}
+            </button>
+            {tour + 1 < TOUR.length && (
+              <button
+                onClick={() => {
+                  setTour(null)
+                  markTourSeen()
+                }}
+                className="press flex h-9 items-center rounded-md px-3 text-caption text-ink3 hover:text-ink2"
+              >
+                Пропустить
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {panel && (
         <div className="fixed inset-0 z-40 flex flex-col bg-paper md:hidden">
@@ -598,10 +856,19 @@ export function ArenaClient({ scenario }: { scenario: Scenario }) {
         <OfferSheet
           scenario={scenario}
           state={state}
+          initial={sheetSeed ?? lastOffer}
           busy={busy}
-          onClose={() => setSheet(false)}
+          onClose={() => {
+            setSheet(false)
+            setSheetSeed(undefined)
+          }}
           onSend={(offer, argument) => {
             setSheet(false)
+            setSheetSeed(undefined)
+            // На узком экране ответ на пакет и встречное приходят в ленту — панель
+            // соглашения поверх неё закрывается, иначе ответа не видно.
+            setPanel(null)
+            setLastOffer(offer)
             void send({ userText: argument, explicitOffer: offer })
           }}
         />

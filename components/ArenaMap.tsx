@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import type { NegotiationState, Scenario } from '@/lib/types'
 import { describe, enumerateDeals, initialDeal, paretoFrontier, utility } from '@/lib/engine/utility'
+import { num } from '@/lib/text'
 import type { RunRecord } from '@/lib/profile'
 
 const W = 560
@@ -88,20 +89,20 @@ export function ArenaMap({
           <tbody>
             <tr className="border-b border-line2 font-semibold">
               <td className="py-2">ваша сделка</td>
-              <td className="py-2 text-right">{you.user.toFixed(1)}</td>
-              <td className="py-2 text-right">{you.opponent.toFixed(1)}</td>
+              <td className="py-2 text-right">{num(you.user)}</td>
+              <td className="py-2 text-right">{num(you.opponent)}</td>
             </tr>
             {model.refs.map((r) => (
               <tr key={r.id} className="border-b border-line2 text-ink2">
                 <td className="py-2">{r.label}</td>
-                <td className="py-2 text-right">{r.p.user.toFixed(1)}</td>
-                <td className="py-2 text-right">{r.p.opponent.toFixed(1)}</td>
+                <td className="py-2 text-right">{num(r.p.user)}</td>
+                <td className="py-2 text-right">{num(r.p.opponent)}</td>
               </tr>
             ))}
             <tr className="border-b border-line2 text-ink2">
               <td className="py-2">запасной вариант</td>
-              <td className="py-2 text-right">{uB.toFixed(1)}</td>
-              <td className="py-2 text-right">{oB.toFixed(1)}</td>
+              <td className="py-2 text-right">{num(uB)}</td>
+              <td className="py-2 text-right">{num(oB)}</td>
             </tr>
           </tbody>
         </table>
@@ -162,7 +163,7 @@ export function ArenaMap({
               transform={`rotate(45 ${x(r.p.opponent)} ${y(r.p.user)})`}
               fill="var(--color-surface)" stroke="var(--color-ink2)" strokeWidth="1.5"
             >
-              <title>{`${r.label}: вам ${r.p.user.toFixed(1)}, второй стороне ${r.p.opponent.toFixed(1)}`}</title>
+              <title>{`${r.label}: вам ${num(r.p.user)}, второй стороне ${num(r.p.opponent)}`}</title>
             </rect>
             <text
               className="map-label"
@@ -193,7 +194,7 @@ export function ArenaMap({
           <circle cx={x(you.opponent)} cy={y(you.user)} r="7"
             fill={inZopa ? 'var(--color-accent)' : 'var(--color-danger)'}
             stroke="var(--color-surface)" strokeWidth="2">
-            <title>{`ваша сделка: вам ${you.user.toFixed(1)}, второй стороне ${you.opponent.toFixed(1)}`}</title>
+            <title>{`ваша сделка: вам ${num(you.user)}, второй стороне ${num(you.opponent)}`}</title>
           </circle>
           <text x={x(you.opponent)} y={y(you.user) - 17} className="map-label" fontSize="11.5" fontWeight="600"
             textAnchor="middle" fill={inZopa ? 'var(--color-accent)' : 'var(--color-danger)'}>

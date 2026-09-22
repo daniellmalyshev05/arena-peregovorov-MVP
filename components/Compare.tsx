@@ -27,8 +27,13 @@ export function Compare({
   onRewindAnother: () => void
 }) {
   const batna = scenario.userBatna.value
-  const pct = (s: NegotiationState) => Math.round(((utility(scenario, s.deal, 'user') - batna) / batna) * 100)
-  const eff = (s: NegotiationState) => Math.round(analyze(scenario, s.deal).efficiency * 100)
+  // Без соглашения итог — запасной вариант, а не статус-кво условий на столе.
+  // Раньше версия с выходом из переговоров показывала выигрыш по условиям,
+  // которые никто не подписывал.
+  const agreed = (s: NegotiationState) => s.status === 'deal' || s.status === 'active'
+  const pct = (s: NegotiationState) =>
+    agreed(s) ? Math.round(((utility(scenario, s.deal, 'user') - batna) / batna) * 100) : 0
+  const eff = (s: NegotiationState) => (agreed(s) ? Math.round(analyze(scenario, s.deal).efficiency * 100) : 0)
 
   const better = pct(branch.state) > pct(baseline.state)
   const worse = pct(branch.state) < pct(baseline.state)
@@ -59,7 +64,7 @@ export function Compare({
             isBranch ? 'border-ink3' : 'border-line text-ink2'
           } ${leads ? 'border-accent' : ''}`}
         >
-          «{line}»
+          {line ? `«${line}»` : <span className="text-ink3">Выход из переговоров</span>}
         </div>
 
         <div className="flex flex-col">
@@ -137,7 +142,7 @@ export function Compare({
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-8 lg:px-14">
         <div className="mx-auto max-w-[1180px]">
           <div className="rise max-w-[780px]">
-            <div className="lbl mb-2.5">Одна фраза — два исхода</div>
+            <div className="lbl mb-2.5">Тот же момент — два исхода</div>
             <h1 className="text-h2 font-semibold tracking-[-0.016em] text-balance">
               {better
                 ? 'Другая формулировка изменила экономику сделки'
@@ -145,7 +150,7 @@ export function Compare({
             </h1>
             <p className="mt-3 text-body leading-relaxed text-ink2">
               {scenario.persona.name.split(' ')[0]}, раскрытые интересы и всё состояние переговоров были
-              восстановлены на тот же раунд. Изменилась только ваша реплика.
+              восстановлены на тот же раунд. Изменилось только то, что вы сказали дальше.
             </p>
           </div>
 

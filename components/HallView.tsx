@@ -9,11 +9,36 @@ import { count } from '@/lib/plural'
 import { Mark } from './Mark'
 import { Portrait } from './Portrait'
 
+/**
+ * Как это работает — тремя шагами на первом экране.
+ *
+ * Жюри открывает ссылку раньше, чем видит демонстрацию, и должно понять
+ * механику до первой реплики. Модального онбординга здесь нет сознательно:
+ * его закрывают не читая, а эти три строки видны вместе с кнопкой «Начать».
+ */
+const STEPS = [
+  {
+    title: 'Спрашивайте',
+    detail: 'Интересы второй стороны закрыты. Верный вопрос открывает интерес — и вместе с ним новое условие сделки.',
+  },
+  {
+    title: 'Собирайте пакет',
+    detail: 'Условия обмениваются вместе, а не по одному: видно, что вы отдаёте и что просите взамен, ещё до отправки.',
+  },
+  {
+    title: 'Возвращайтесь',
+    detail: 'После разбора любой раунд можно вернуть и сказать иначе. Две версии сделки встанут рядом.',
+  },
+]
+
 const SKILLS: Record<string, string> = {
   'resident-attraction': 'отделять интересы от позиции',
   'contractor-delay': 'менять ресурс на обязательство',
-  'resident-default': 'вовремя выходить из переговоров',
+  'resident-default': 'сравнивать сделку с отказом',
   'supplier-hike': 'собирать пакет вместо торга о цене',
+  'it-budget': 'искать, что стоит за цифрой',
+  'retention-offer': 'торговаться не только деньгами',
+  'client-discount': 'продавать ценность вместо скидки',
 }
 
 export function HallView({ scenarios }: { scenarios: Scenario[] }) {
@@ -36,12 +61,15 @@ export function HallView({ scenarios }: { scenarios: Scenario[] }) {
   const weak = patterns(runs).find((p) => p.tone === 'weak')
   const suggested = scored.length ? suggestScenario(runs, scenarios) : undefined
   const passed = scenarios.filter((s) => best(s.id) !== null).length
+  // Куда ведёт главная кнопка: рекомендованный кейс, иначе первый непройденный,
+  // иначе первый в библиотеке. Без этого «Начать» некуда вести на чистом профиле.
+  const entry = suggested ?? scenarios.find((s) => best(s.id) === null) ?? scenarios[0]
 
   return (
     <main className="min-h-dvh bg-paper">
       <div className="mx-auto max-w-[900px] px-6 py-12 sm:px-8 sm:py-16">
         <div className="rise flex items-center gap-2.5">
-          <Mark size={24} />
+          <Mark size={24} animate />
           <span className="text-lead font-semibold tracking-[0.01em]">Арена</span>
           <a
             href="/admin"
@@ -63,6 +91,37 @@ export function HallView({ scenarios }: { scenarios: Scenario[] }) {
           после этого можно собрать соглашение, выгодное обеим сторонам. Любой ход можно вернуть и
           переиграть.
         </p>
+
+        {/* Вход, а не меню: первый экран обязан давать одну очевидную кнопку.
+            Человек, открывший ссылку без объяснений, не должен выбирать из
+            семи строк, чтобы понять, что здесь происходит. */}
+        <div className="mt-7 flex flex-wrap items-center gap-x-4 gap-y-3">
+          <a
+            href={`/arena/${entry.id}`}
+            className="press flex h-12 items-center gap-2.5 rounded-md bg-accent px-6 font-semibold text-white hover:bg-accent/92"
+          >
+            {scored.length ? 'Продолжить' : 'Начать переговоры'}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+          </a>
+          <span className="text-small text-ink2">
+            {entry.title} · {entry.persona.name}, {entry.persona.role}
+          </span>
+        </div>
+
+        {/* Три шага — весь онбординг: жюри проходит продукт само, до демонстрации. */}
+        <ul className="mt-9 grid grid-cols-1 gap-x-8 gap-y-5 border-t border-line pt-7 sm:grid-cols-3">
+          {STEPS.map((s, i) => (
+            <li key={s.title} className="rise flex gap-3" style={{ animationDelay: `${120 + i * 70}ms` }}>
+              <span className="num mt-[3px] flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border border-accent-line bg-accent-soft text-caption font-semibold text-accent">
+                {i + 1}
+              </span>
+              <span className="min-w-0">
+                <span className="block font-semibold">{s.title}</span>
+                <span className="mt-1 block text-small leading-snug text-ink2 text-pretty">{s.detail}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
 
         {scored.length > 0 && (
           <a

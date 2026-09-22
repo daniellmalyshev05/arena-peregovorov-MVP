@@ -83,7 +83,7 @@ export function evaluateOffer(
   state: NegotiationState,
   proposed: Deal,
   adaptation: Adaptation = NO_ADAPTATION,
-): { verdict: OfferVerdict; opponentSurplus: number; aspiration: number } {
+): { verdict: OfferVerdict; opponentSurplus: number; aspiration: number; counter?: Deal } {
   const opponentSurplus = surplus(scenario, proposed, 'opponent')
   const cfg = ARCHETYPE[scenario.archetype] ?? ARCHETYPE.hard_negotiator
 
@@ -113,7 +113,69 @@ export function evaluateOffer(
   else if (opponentSurplus >= 0) verdict = 'counter'
   else verdict = 'reject'
 
-  return { verdict, opponentSurplus: round2(opponentSurplus), aspiration: round2(aspiration) }
+  // Своё встречное предложение вторая сторона не отзывает: если игрок вернул
+  // ей ровно её условия, а они всё ещё лучше её запасного варианта, это согласие.
+  if (verdict !== 'accept' && opponentSurplus >= 0 && state.standingCounter && sameDeal(proposed, state.standingCounter)) {
+    verdict = 'accept'
+  }
+
+  const counter = verdict === 'accept' ? undefined : counterOffer(scenario, state, proposed, aspiration + COUNTER_MARGIN)
+
+  return { verdict, opponentSurplus: round2(opponentSurplus), aspiration: round2(aspiration), counter }
+}
+
+/** Запас над притязанием, с которым считается встречное: настроение за раунд может его немного сдвинуть. */
+const COUNTER_MARGIN = 1
+
+/**
+ * Встречное предложение второй стороны — считает КОД, как и вердикт.
+ *
+ * Раньше встречные условия придумывала модель: называла уровни, которые движок
+ * не проверял, и игрок, собрав ровно то, что ему предложили, мог получить отказ.
+ * Теперь встречное — ближайший к пакету игрока вариант, который устраивает
+ * вторую сторону. Двигаются только условия, уже выведенные в разговор.
+ *
+ * Встречное строится как обмен, если обмен возможен: в нём есть хотя бы одно
+ * условие, которое для игрока лучше текущего соглашения. Иначе игрок, приняв
+ * чужое встречное как есть, получал в разборе «уступку без встречного условия» —
+ * продукт сам подводил его к ошибке, за которую потом снимал баллы. Ради обмена
+ * допускается на одно изменённое условие больше, чем в самом коротком варианте.
+ */
+export function counterOffer(scenario: Scenario, state: NegotiationState, proposed: Deal, target: number): Deal | undefined {
+  const open = scenario.issues.filter((i) => state.visibleIssues.includes(i.id))
+  type Found = { deal: Deal; changes: number; user: number }
+  const candidates: Found[] = []
+
+  const walk = (k: number, deal: Deal, changes: number) => {
+    if (k === open.length) {
+      if (changes === 0) return
+      if (surplus(scenario, deal, 'opponent') < target) return
+      candidates.push({ deal: { ...deal }, changes, user: utility(scenario, deal, 'user') })
+      return
+    }
+    const issue = open[k]
+    for (const o of issue.options) {
+      const changed = o.id !== proposed[issue.id] ? 1 : 0
+      walk(k + 1, { ...deal, [issue.id]: o.id }, changes + changed)
+    }
+  }
+  walk(0, { ...proposed }, 0)
+  if (!candidates.length) return undefined
+
+  const pick = (list: Found[]) =>
+    list.reduce((a, b) => (b.changes < a.changes || (b.changes === a.changes && b.user > a.user) ? b : a))
+  const shortest = pick(candidates)
+
+  const givesBack = (d: Deal) =>
+    open.some((i) => optionOf(i, d[i.id]).valueUser > optionOf(i, state.deal[i.id]).valueUser)
+  const exchanges = candidates.filter((c) => c.changes <= shortest.changes + 1 && givesBack(c.deal))
+  return (exchanges.length ? pick(exchanges) : shortest).deal
+}
+
+export function sameDeal(a: Deal, b: Deal): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)])
+  for (const k of keys) if (a[k] !== b[k]) return false
+  return true
 }
 
 export interface LlmTurnOutput {
@@ -136,12 +198,16 @@ export interface ApplyTurnInput {
   hypothesisUpdate?: { id: string; confidence: number }[]
   /** Вердикт, уже посчитанный вызывающей стороной по тому же предложению. */
   precomputedVerdict?: OfferVerdict
+  /** Встречное предложение, посчитанное движком вместе с вердиктом. */
+  counter?: Deal
 }
 
 export interface ApplyTurnResult {
   state: NegotiationState
   /** Гипотеза, которую стоит ненавязчиво показать игроку на две секунды. */
   hint?: string
+  /** Утверждение из досье, которое стоит оценить прямо сейчас. */
+  hintProbe?: string
   verdict?: OfferVerdict
 }
 
@@ -177,35 +243,61 @@ export function applyTurn(input: ApplyTurnInput): ApplyTurnResult {
   const dealChanges: Turn['dealChanges'] = []
   let verdict: OfferVerdict | undefined
 
+  let offered: Turn['dealChanges'] = []
   if (Object.keys(incoming).length) {
     const proposed = sanitizeOffer(scenario, state, incoming)
-    verdict = input.precomputedVerdict ?? evaluateOffer(scenario, state, proposed).verdict
+    const evaluated = input.precomputedVerdict
+      ? { verdict: input.precomputedVerdict, counter: input.counter }
+      : evaluateOffer(scenario, state, proposed)
+    verdict = evaluated.verdict
+
+    for (const issue of scenario.issues) {
+      const from = state.deal[issue.id]
+      const to = proposed[issue.id]
+      if (from !== to) offered.push({ issueId: issue.id, from, to })
+    }
 
     // Условия фиксируются, только если оппонент согласился. Иначе это остаётся предложением.
     if (verdict === 'accept') {
-      for (const issue of scenario.issues) {
-        const from = state.deal[issue.id]
-        const to = proposed[issue.id]
-        if (from !== to) dealChanges.push({ issueId: issue.id, from, to })
-      }
+      dealChanges.push(...offered)
       state.deal = proposed
+      state.agreedAtRound = state.round
       state.status = allIssuesSettled(scenario, state) ? 'deal' : 'active'
+      delete state.standingCounter
+    } else if (evaluated.counter) {
+      state.standingCounter = evaluated.counter
+    } else {
+      // Встречного не нашлось — прежнее тоже снимается, иначе на экране
+      // осталось бы предложение, которое вторая сторона уже не повторила.
+      delete state.standingCounter
     }
   }
 
   // 3. Дисциплина уступок считается кодом по направлению сдвига, а не со слов модели.
-  const concessions = dealChanges.filter((c) => shiftDirection(issueById(scenario, c.issueId)!, c.from, c.to) === 'concession')
-  const gains = dealChanges.filter((c) => shiftDirection(issueById(scenario, c.issueId)!, c.from, c.to) === 'gain')
-  const acts = new Set<SpeechAct>(llm.detectedActs ?? [])
-  if (concessions.length && !gains.length) {
-    state.unilateralConcessions += 1
-    acts.add('unilateral_concession')
-    acts.delete('conditional_offer')
-  } else if (concessions.length && gains.length) {
-    state.conditionalOffers += 1
-    acts.add('conditional_offer')
-    acts.delete('unilateral_concession')
+  //
+  // Характер хода определяет сам пакет, даже если его не приняли: предложить
+  // условие без встречного — это уже уступка по форме. Но в счётчики, по которым
+  // считаются баллы, идёт только то, что попало в соглашение. Раньше метку
+  // ставила модель, и отклонённый пакет попадал в разбор как «ход, изменивший
+  // экономику сделки» рядом с «уступок без встречного условия: 0».
+  const moveOf = (changes: Turn['dealChanges']) => {
+    const concessions = changes.filter((c) => shiftDirection(issueById(scenario, c.issueId)!, c.from, c.to) === 'concession')
+    const gains = changes.filter((c) => shiftDirection(issueById(scenario, c.issueId)!, c.from, c.to) === 'gain')
+    if (concessions.length && !gains.length) return 'unilateral' as const
+    if (concessions.length && gains.length) return 'conditional' as const
+    return undefined
   }
+  const acts = new Set<SpeechAct>(llm.detectedActs ?? [])
+  if (offered.length) {
+    acts.delete('unilateral_concession')
+    acts.delete('conditional_offer')
+    const move = moveOf(offered)
+    if (move === 'unilateral') acts.add('unilateral_concession')
+    if (move === 'conditional') acts.add('conditional_offer')
+  }
+  const applied = moveOf(dealChanges)
+  if (applied === 'unilateral') state.unilateralConcessions += 1
+  if (applied === 'conditional') state.conditionalOffers += 1
 
   // 4. Настроение. Дельты от модели ограничены — она не управляет миром, только подталкивает.
   const d = llm.stateDelta ?? {}
@@ -217,6 +309,7 @@ export function applyTurn(input: ApplyTurnInput): ApplyTurnResult {
   state.mood.flexibility = clampRange(50 + (state.mood.trust - state.mood.irritation) / 2, 0, 100)
 
   if (factPlayed && !state.playedFacts.includes(factPlayed)) state.playedFacts.push(factPlayed)
+  if (factPlayed) acts.add('objective_criterion')
 
   for (const h of hypothesisUpdate ?? []) {
     const probe = scenario.beliefProbes.find((p) => p.id === h.id)
@@ -229,7 +322,7 @@ export function applyTurn(input: ApplyTurnInput): ApplyTurnResult {
   // 5. Записываем оба хода.
   state.transcript.push({
     index, role: 'user', text: userText, acts: [...acts],
-    dealChanges, revealed: newlyRevealed, factPlayed, timestamp: Date.now(),
+    dealChanges, revealed: newlyRevealed, factPlayed, verdict, timestamp: Date.now(),
   })
   state.transcript.push({
     index: index + 1, role: 'opponent', text: llm.reply, acts: [],
@@ -237,13 +330,30 @@ export function applyTurn(input: ApplyTurnInput): ApplyTurnResult {
   })
 
   state.round += 1
-  if (state.round > scenario.maxRounds && state.status === 'active') state.status = 'timeout'
+  // Раунды кончились. Если пакет уже был согласован, это сделка по нему, а не
+  // «соглашения нет»: договорённость не исчезает от того, что разговор шёл дальше.
+  if (state.round > scenario.maxRounds && state.status === 'active') {
+    state.status = state.agreedAtRound ? 'deal' : 'timeout'
+  }
 
-  const hint = newlyRevealed.length
-    ? scenario.hiddenInterests.find((h) => h.id === newlyRevealed[0])?.hypothesis
+  const { hint, hintProbe } = hintFor(scenario, state, newlyRevealed[0])
+  return { state, hint, hintProbe, verdict }
+}
+
+/**
+ * Что показать игроку в момент раскрытия. Если у интереса есть утверждение из
+ * досье и оно ещё не оценено — само утверждение: оценка ставится тут же.
+ * Текст обязан быть текстом утверждения, а не вопроса-подсказки: часть
+ * утверждений — ловушки, сформулированные наоборот, и «Похоже» на вопрос
+ * записалось бы как «Похоже» на противоположное.
+ */
+function hintFor(scenario: Scenario, state: NegotiationState, interestId?: string) {
+  const interest = interestId ? scenario.hiddenInterests.find((h) => h.id === interestId) : undefined
+  if (!interest) return { hint: undefined, hintProbe: undefined }
+  const probe = interest.probe
+    ? scenario.beliefProbes.find((p) => p.id === interest.probe && !state.hypotheses.some((h) => h.id === p.id))
     : undefined
-
-  return { state, hint, verdict }
+  return { hint: probe?.text ?? interest.hypothesis, hintProbe: probe?.id }
 }
 
 /**
@@ -265,7 +375,7 @@ export function grantLeaked(
   scenario: Scenario,
   state: NegotiationState,
   leaks: { kind: 'interest' | 'issue'; id: string }[],
-): { granted: string[]; hint?: string } {
+): { granted: string[]; hint?: string; hintProbe?: string } {
   if (!leaks.length) return { granted: [] }
 
   const lastUserTurn = [...state.transcript].reverse().find((t) => t.role === 'user')
@@ -287,8 +397,7 @@ export function grantLeaked(
     }
   }
 
-  const first = granted.length ? scenario.hiddenInterests.find((h) => h.id === granted[0]) : undefined
-  return { granted, hint: first?.hypothesis }
+  return { granted, ...hintFor(scenario, state, granted[0]) }
 }
 
 export function walkAway(state: NegotiationState): NegotiationState {

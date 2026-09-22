@@ -1,6 +1,7 @@
 /** Аудит всех сценариев библиотеки. Тот же движок, что работает в админке. */
 import { scenarios } from '../lib/scenarios'
 import { auditScenario } from '../lib/engine/audit'
+import { count } from '../lib/plural'
 
 const f = (n: number) => (n >= 0 ? '+' : '') + n.toFixed(1)
 let failures = 0
@@ -29,4 +30,39 @@ for (const s of scenarios) {
 
 console.log('\n' + '═'.repeat(74))
 if (failures) { console.error(`сценариев с блокерами: ${failures} из ${scenarios.length}`); process.exit(1) }
-console.log(`все ${scenarios.length} сценария сбалансированы`)
+// Подсказки первого раунда: три штуки и без спойлеров. Подсказка, называющая
+// неоткрытое условие, отдаёт игроку то, что он должен вытащить вопросом.
+{
+  let bad = 0
+  for (const s of scenarios) {
+    const openers = s.openers ?? []
+    if (openers.length !== 3) {
+      bad++
+      console.error(`  ✗ ${s.id}: подсказок первого раунда ${openers.length}, нужно 3`)
+    }
+    const hidden = s.issues.filter((i) => !i.visibleFromStart)
+    for (const o of openers) {
+      const said = o.toLowerCase().replace(/ё/g, 'е')
+      for (const issue of hidden) {
+        const stems = issue.label
+          .toLowerCase()
+          .replace(/ё/g, 'е')
+          .split(/[^а-я]+/)
+          .filter((w) => w.length >= 6)
+          .map((w) => w.slice(0, 6))
+        const hit = stems.find((st) => said.includes(st))
+        if (hit) {
+          bad++
+          console.error(`  ✗ ${s.id}: подсказка «${o}» называет неоткрытое условие «${issue.label}»`)
+        }
+      }
+    }
+  }
+  if (bad) {
+    console.error(`подсказок с проблемами: ${bad}`)
+    process.exit(1)
+  }
+  console.log('подсказки первого раунда на месте и не называют неоткрытых условий')
+}
+
+console.log(`все сценарии сбалансированы: ${count(scenarios.length, ['сценарий', 'сценария', 'сценариев'])}`)

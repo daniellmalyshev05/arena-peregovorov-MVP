@@ -1,4 +1,5 @@
-import type { NegotiationState, Scenario, SpeechAct } from '@/lib/types'
+import type { Deal, NegotiationState, Scenario, SpeechAct } from '@/lib/types'
+import { decapitalize } from '@/lib/text'
 import type { OfferVerdict } from '@/lib/engine/state'
 import type { LlmTurn } from './schema'
 
@@ -115,6 +116,14 @@ export function detectActs(text: string): SpeechAct[] {
   return acts.slice(0, 3)
 }
 
+/** Встречное предложение словами второй стороны: только то, что отличается от пакета игрока. */
+function speakCounter(scenario: Scenario, offered: Deal, counter: Deal): string {
+  const parts = scenario.issues
+    .filter((i) => offered[i.id] !== counter[i.id])
+    .map((i) => `${decapitalize(i.label)} — ${i.options.find((o) => o.id === counter[i.id])?.label ?? ''}`)
+  return parts.length ? `Могу предложить так: ${parts.join(', ')}.` : ''
+}
+
 /** Похоже ли это вообще на осмысленную реплику. */
 function isGibberish(text: string): boolean {
   const t = text.trim().toLowerCase()
@@ -161,6 +170,8 @@ export function offlineTurn(
   userText: string,
   verdict?: OfferVerdict,
   factPlayed?: string,
+  /** Встречное предложение, посчитанное движком: запасной движок называет его, а не общую фразу. */
+  counter?: { offered: Deal; counter: Deal },
 ): LlmTurn {
   const fb = scenario.fallbackLines
   const lastOpponentLine = [...state.transcript].reverse().find((t) => t.role === 'opponent')?.text
@@ -183,9 +194,10 @@ export function offlineTurn(
   })
 
   // 1. Решение по пакету — важнее всего остального.
+  const counterLine = counter ? ' ' + speakCounter(scenario, counter.offered, counter.counter) : ''
   if (verdict === 'accept') return out(fb.accept)
-  if (verdict === 'reject') return out(fb.reject, { stateDelta: { ...stateDelta, irritation: (stateDelta.irritation ?? 0) + 3 } })
-  if (verdict === 'counter') return out(fb.counter)
+  if (verdict === 'reject') return out(fb.reject + counterLine, { stateDelta: { ...stateDelta, irritation: (stateDelta.irritation ?? 0) + 3 } })
+  if (verdict === 'counter') return out(fb.counter + counterLine)
 
   // 2. Игрок задал вопрос, который открывает интерес.
   const candidate = scenario.hiddenInterests.find(

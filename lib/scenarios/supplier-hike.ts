@@ -131,6 +131,7 @@ export const supplierHike: Scenario = {
         'Не буду делать вид, что все пятнадцать процентов — это чистое сырьё. Часть заложена на то, что будет дальше.',
       label: 'В 15% заложен запас на будущую волатильность, а не только уже произошедший рост затрат',
       hypothesis: 'Часть повышения — страховочный запас?',
+      probe: 's4_b1',
       unlockedBy: ['objective_criterion', 'spin_problem'],
       revealsIssue: 'price',
       layer: 'interest',
@@ -141,6 +142,7 @@ export const supplierHike: Scenario = {
         'Для нас срок оплаты — это живые деньги. Шестьдесят дней отсрочки стоят дороже, чем вам кажется.',
       label: 'Ранняя оплата для поставщика очень ценна из-за стоимости оборотного капитала',
       hypothesis: 'Срок оплаты для них почти так же важен, как цена?',
+      probe: 's4_b3',
       unlockedBy: ['spin_needpayoff', 'spin_situation'],
       revealsIssue: 'payment',
       layer: 'constraint',
@@ -151,6 +153,7 @@ export const supplierHike: Scenario = {
         'Если я знаю годовой объём, я закупаю сырьё совсем по другой цене. Это то, за что я готова платить скидкой.',
       label: 'Гарантированный объём позволяет ей лучше закупать сырьё и снижать собственный риск',
       hypothesis: 'Объём может купить нам снижение цены?',
+      probe: 's4_b2',
       unlockedBy: ['spin_needpayoff', 'spin_implication'],
       revealsIssue: 'volume',
       layer: 'resource',
@@ -161,6 +164,7 @@ export const supplierHike: Scenario = {
         'Половина наших издержек — срочные партии под ваши заявки. Ровный график заказов снимает эту статью почти целиком.',
       label: 'Предсказуемый график заказов снижает её издержки на срочные партии',
       hypothesis: 'Предсказуемость заказов имеет для них денежную ценность?',
+      probe: 's4_b5',
       unlockedBy: ['spin_problem', 'spin_situation'],
       revealsIssue: 'logistics',
       layer: 'interest',
@@ -274,6 +278,12 @@ export const supplierHike: Scenario = {
     exchange:
       'Вот это уже предметный вариант. Давайте посмотрим, какую часть цены он позволяет пересчитать.',
   },
+
+  openers: [
+    'Из чего складывается это повышение?',
+    'Что вам мешает удержать текущую цену?',
+    'Что бы вам дало, если бы мы работали дольше и предсказуемее?',
+  ],
 
   maxRounds: 12,
 }

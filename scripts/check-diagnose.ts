@@ -12,6 +12,7 @@
 import { scenarios } from '@/lib/scenarios'
 import { createInitialState } from '@/lib/engine/state'
 import { score } from '@/lib/engine/scoring'
+import { num } from '@/lib/text'
 import { analyze, initialDeal } from '@/lib/engine/utility'
 import type { Deal, NegotiationState } from '@/lib/types'
 
@@ -71,7 +72,7 @@ console.log('Главный вывод разбора\n')
   const r = score(s, state({ status: 'deal', deal, unilateralConcessions: 1 }))
   check(r.headline === 'Ценность создана, но досталась не вам', 'перекос в дележе назван прямо')
   check(!r.headline.includes('Сильная сделка'), 'такой исход не выдаётся за сильную сделку')
-  check(r.rootCause.includes(fair.toFixed(1)), 'в причине названа справедливая доля')
+  check(r.rootCause.includes(num(fair)), 'в причине названа справедливая доля')
   check(r.total < 60, 'балл соответствует заголовку')
 }
 

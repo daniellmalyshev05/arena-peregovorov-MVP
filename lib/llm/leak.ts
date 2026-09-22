@@ -33,8 +33,14 @@ const STOP = new Set([
   'договор', 'договора', 'проект', 'проекта', 'компания', 'компании',
 ])
 
-/** Основа слова: первые шесть букв. Грубо, зато переживает русские окончания. */
-const stem = (w: string) => w.slice(0, 6)
+/**
+ * Основа слова: первые пять букв. Шести не хватало: «перед советом» из секрета
+ * не совпадало с «перед советом» из реплики, потому что слово «совет» короче
+ * порога и выбрасывалось целиком. Пять букв ловят короткие существительные,
+ * которыми секрет и проговаривается.
+ */
+const STEM = 5
+const stem = (w: string) => w.slice(0, STEM)
 
 function contentStems(text: string): Set<string> {
   const out = new Set<string>()
@@ -45,7 +51,7 @@ function contentStems(text: string): Set<string> {
       if (raw.length >= 2) out.add(raw)
       continue
     }
-    if (raw.length < 6 || STOP.has(raw)) continue
+    if (raw.length < STEM || STOP.has(raw)) continue
     out.add(stem(raw))
   }
   return out
@@ -58,7 +64,7 @@ function contentStems(text: string): Set<string> {
  */
 function longestRun(a: string, b: string): number {
   const words = (t: string) =>
-    t.toLowerCase().split(/[^0-9a-zа-яё]+/).filter((w) => w.length >= 4).map(stem)
+    t.toLowerCase().replace(/ё/g, 'е').split(/[^0-9a-zа-я]+/).filter((w) => w.length >= 4).map(stem)
   const x = words(a)
   const y = words(b)
   if (!x.length || !y.length) return 0
@@ -104,6 +110,10 @@ function publicStems(scenario: Scenario, state: NegotiationState): Set<string> {
  *              уже помечено раскрытым и утечкой не считается.
  */
 export function detectLeak(scenario: Scenario, state: NegotiationState, reply: string): Leak[] {
+  // Реплика запасного движка — это заранее написанный текст кейса, а не
+  // проговорка модели: её собственные слова иногда совпадают с секретом.
+  if (Object.values(scenario.fallbackLines).some((line) => line.trim() === reply.trim())) return []
+
   const said = contentStems(reply)
   if (!said.size) return []
   const allowed = publicStems(scenario, state)
@@ -112,15 +122,17 @@ export function detectLeak(scenario: Scenario, state: NegotiationState, reply: s
 
   /**
    * Три содержательных совпадения — это уже не совпадение; число весит за два.
-   * Порог падает до двух, если совпала ещё и фраза: в кейсе, где отдельные
-   * слова секрета звучат законно, утечку выдаёт именно порядок слов.
+   * Порог падает до двух, если совпал ещё и кусок фразы: в кейсе, где отдельные
+   * слова секрета звучат законно, утечку выдаёт именно порядок слов. Раньше
+   * требовалось четыре слова подряд, и перефраз вроде «защищать этот выбор
+   * перед советом» проходил мимо — совпадало три.
    */
   const leaked = (secretText: string) => {
     const secret = contentStems(secretText)
     const matched = [...secret].filter((s) => said.has(s) && !allowed.has(s))
     const weight = matched.reduce((n, m) => n + (/^\d/.test(m) ? 2 : 1), 0)
     if (weight >= 3) return matched
-    if (weight >= 2 && longestRun(reply, secretText) >= 4) return matched
+    if (weight >= 2 && longestRun(reply, secretText) >= 3) return matched
     return null
   }
 

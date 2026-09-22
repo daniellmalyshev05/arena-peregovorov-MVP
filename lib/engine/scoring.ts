@@ -1,5 +1,6 @@
 import type { NegotiationState, Scenario } from '@/lib/types'
-import { analyze, enumerateReachable, zopa } from './utility'
+import { analyze, enumerateReachable, optionOf, zopa } from './utility'
+import { decapitalize, num } from '@/lib/text'
 
 export interface ScoreLine {
   key: string
@@ -86,10 +87,10 @@ export function score(scenario: Scenario, state: NegotiationState): ScoreReport 
     dealDetail = 'Раунды закончились, соглашения нет. Вы остались при своём запасном варианте.'
   } else if (current.userSurplus < 0) {
     dealEarned = 0
-    dealDetail = 'Сделка на ' + Math.abs(current.userSurplus).toFixed(1) + ' хуже вашего запасного варианта. Отказ был бы выгоднее.'
+    dealDetail = 'Сделка на ' + num(Math.abs(current.userSurplus)) + ' хуже вашего запасного варианта. Отказ был бы выгоднее.'
   } else {
     dealEarned = clamp(current.userSurplus / target) * 25
-    dealDetail = 'Выигрыш к запасному варианту: ' + current.userSurplus.toFixed(1) + ' при справедливом ориентире ' + target.toFixed(1) + '.'
+    dealDetail = 'Выигрыш к запасному варианту: ' + num(current.userSurplus) + ' при справедливом ориентире ' + num(target) + '.'
   }
   lines.push({ key: 'deal', label: 'Ценность сделки относительно запасного варианта', max: 25, earned: dealEarned, detail: dealDetail })
 
@@ -111,7 +112,7 @@ export function score(scenario: Scenario, state: NegotiationState): ScoreReport 
         : rightfulExit
           ? 'Из открытых условий создавать было нечего. Ценность в кейсе была, но за теми интересами, до которых разговор не дошёл.'
           : 'Соглашения нет, поэтому совместная ценность не создана.'
-      : 'Использовано ' + (economy.efficiency * 100).toFixed(0) + '% создаваемой ценности, на столе осталось ' + economy.valueLeftOnTable.toFixed(1) + '.',
+      : 'Использовано ' + (economy.efficiency * 100).toFixed(0) + '% создаваемой ценности, на столе осталось ' + num(economy.valueLeftOnTable) + '.',
   })
 
   // 3. Раскрытие интересов (15).
@@ -133,7 +134,7 @@ export function score(scenario: Scenario, state: NegotiationState): ScoreReport 
     max: 15,
     earned: cal.score * 15,
     detail: cal.answered
-      ? 'Оценка по Брайеру: ' + cal.brier.toFixed(3) + '. Чем ближе к нулю, тем точнее вы понимали вторую сторону.'
+      ? 'Оценка по Брайеру: ' + num(cal.brier, 3) + '. Чем ближе к нулю, тем точнее вы понимали вторую сторону.'
       : 'Вы не зафиксировали ни одной гипотезы о второй стороне.',
   })
 
@@ -180,8 +181,12 @@ export function score(scenario: Scenario, state: NegotiationState): ScoreReport 
   if (current.userSurplus < 0 && !noAgreement) {
     penalties.push({ key: 'below_batna', label: 'Сделка хуже собственного запасного варианта', points: 15 })
   }
-  const firstUnilateral = state.transcript.find((t) => t.acts.includes('unilateral_concession'))
-  if (firstUnilateral) {
+  // Штраф — только за уступку, которая попала в соглашение. Отклонённый пакет
+  // ничего не отдал, и строка «−0» рядом с «уступок: 0» была противоречием.
+  const firstUnilateral = state.transcript.find(
+    (t) => t.acts.includes('unilateral_concession') && t.dealChanges.length > 0,
+  )
+  if (firstUnilateral && state.unilateralConcessions > 0) {
     penalties.push({
       key: 'unilateral',
       label: 'Уступка без встречного условия',
@@ -230,6 +235,22 @@ function calibration(scenario: Scenario, state: NegotiationState) {
   return { score: clamp(1 - 2 * brier) * (0.5 + 0.5 * coverage), brier, answered: answered.length }
 }
 
+/**
+ * Лучший для игрока пакет, который он реально мог предложить и который вторая
+ * сторона приняла бы: перебор только по выведенным в разговор условиям.
+ */
+function bestReachable(scenario: Scenario, state: NegotiationState) {
+  const inZopa = zopa(enumerateReachable(scenario, state.visibleIssues))
+  if (!inZopa.length) return undefined
+  const best = inZopa.reduce((a, b) => (b.userSurplus > a.userSurplus ? b : a))
+  const moved = scenario.issues
+    .filter((i) => state.visibleIssues.includes(i.id) && best.deal[i.id] !== state.deal[i.id])
+    .map((i) => `${decapitalize(i.label)} — ${optionOf(i, best.deal[i.id]).label}`)
+    .slice(0, 2)
+  if (!moved.length) return undefined
+  return { surplus: '+' + num(best.userSurplus), terms: moved.join(', ') }
+}
+
 /** Один главный вывод для первого экрана разбора, а не десять метрик. */
 function diagnose(
   scenario: Scenario,
@@ -269,10 +290,14 @@ function diagnose(
           : 'Вы открыли всё, что вторая сторона скрывала, и ни один вариант не перебил ваш запасной. Распознать это и уйти — полноценный результат переговоров.',
       }
     }
+    // Называть здесь нераскрытый интерес нельзя: строкой выше сказано, что
+    // вариант собирался из ОТКРЫТЫХ условий. Показываем сам пакет — какой
+    // выигрыш он давал и за счёт каких условий.
+    const best = bestReachable(scenario, state)
     return {
       headline: 'Вы вышли из переговоров, хотя договориться было можно',
-      rootCause: missed.length
-        ? `Взаимовыгодный вариант был достижим из уже открытых условий, но вы его не собрали. Ближе всего к нему: ${missed[0].label.toLowerCase()}.`
+      rootCause: best
+        ? `Из уже открытых условий собирался пакет, который давал вам ${best.surplus} к запасному варианту и устраивал вторую сторону. Держался он на том, что вы не сдвинули: ${best.terms}.`
         : 'Взаимовыгодный вариант был достижим из уже открытых условий, и вы знали достаточно, чтобы его собрать.',
     }
   }
@@ -294,7 +319,7 @@ function diagnose(
       headline: 'Сделка состоялась, но вы оставили ценность на столе',
       rootCause:
         'Существовал вариант, лучший одновременно для вас и для второй стороны. Неиспользованной осталась ценность ' +
-        economy.valueLeftOnTable.toFixed(1) +
+        num(economy.valueLeftOnTable) +
         ' — это цена нераскрытых интересов.',
       rootCauseTurn: penalties[0]?.turnIndex,
     }
@@ -310,9 +335,9 @@ function diagnose(
       headline: 'Ценность создана, но досталась не вам',
       rootCause:
         'Общий результат близок к пределу возможного, и вторая сторона выиграла. Но из ' +
-        fairShare.toFixed(1) +
+        num(fairShare) +
         ', на которые вы могли рассчитывать при равном делении, вы взяли ' +
-        current.userSurplus.toFixed(1) +
+        num(current.userSurplus) +
         '. ' +
         (penalties.some((x) => x.key === 'unilateral')
           ? 'Вы отдавали условия, не прося ничего взамен.'
@@ -325,7 +350,7 @@ function diagnose(
     headline: 'Сильная сделка: обе стороны выиграли относительно своих запасных вариантов',
     rootCause:
       'Вы использовали ' + (economy.efficiency * 100).toFixed(0) + '% создаваемой ценности и вышли на ' +
-      current.userSurplus.toFixed(1) + ' выше своего запасного варианта.',
+      num(current.userSurplus) + ' выше своего запасного варианта.',
   }
 }
 

@@ -2,9 +2,16 @@
 
 import { useEffect, useState } from 'react'
 import type { Scenario } from '@/lib/types'
-import { clearRuns, loadRuns, patterns, type RunRecord } from '@/lib/profile'
+import { clearRuns, loadRuns, patterns, skills, type RunRecord } from '@/lib/profile'
 import { adaptationLevel, adaptationTargets, computeAdaptation } from '@/lib/engine/adaptive'
 import { count, plural } from '@/lib/plural'
+import { num } from '@/lib/text'
+
+const SKILL_STATUS: Record<string, string> = {
+  untested: 'не проверялся',
+  learning: 'в работе',
+  mastered: 'освоен',
+}
 
 const STATUS_LABEL: Record<string, string> = {
   deal: 'сделка',
@@ -30,6 +37,8 @@ export function ProfileView({ scenarios }: { scenarios: Scenario[] }) {
   }, [])
 
   const scored = runs.filter((r) => !r.training)
+  const skillList = skills(runs)
+  const mastered = skillList.filter((s) => s.status === 'mastered').length
   const found = patterns(runs)
   const adaptation = computeAdaptation(runs)
   const weak = found.filter((p) => p.tone === 'weak')
@@ -116,6 +125,38 @@ export function ProfileView({ scenarios }: { scenarios: Scenario[] }) {
               )}
             </div>
 
+            {/* Навыки как допуски: не полоска опыта, а список того, что
+                подтвердилось повторяемостью. Освоенным навык становится с
+                второй зачётной сессии, в которой он сработал. */}
+            <section className="mt-10">
+              <div className="lbl mb-3 flex items-baseline gap-3 border-b border-line pb-2">
+                <span>Навыки</span>
+                <span className="num ml-auto shrink-0">освоено {mastered} из {skillList.length}</span>
+              </div>
+              <div className="flex flex-col">
+                {skillList.map((s) => (
+                  <div
+                    key={s.id}
+                    className="grid grid-cols-[1fr_auto] items-baseline gap-x-4 gap-y-1 border-b border-line2 py-3 last:border-0"
+                  >
+                    <span className={`font-semibold ${s.status === 'mastered' ? 'text-accent' : ''}`}>{s.title}</span>
+                    <span
+                      className={`whitespace-nowrap text-caption ${
+                        s.status === 'mastered'
+                          ? 'font-semibold text-accent'
+                          : s.status === 'learning'
+                            ? 'text-ink2'
+                            : 'text-ink3'
+                      }`}
+                    >
+                      {SKILL_STATUS[s.status]}
+                    </span>
+                    <span className="col-span-2 text-small leading-snug text-ink2">{s.detail}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+
             {/* Прогрессия. В тренажёрах прокачивают персонажа — здесь растёт
                 вторая сторона, и это единственное место, где рост видно целиком. */}
             <section className="mt-10">
@@ -131,7 +172,7 @@ export function ProfileView({ scenarios }: { scenarios: Scenario[] }) {
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <span className="font-semibold text-accent">Тяжелее: {adaptationLevel(adaptation)}</span>
                     <span className="num text-small text-ink2">
-                      уровень притязаний +{adaptation.aspiration.toFixed(1)}, порог отказа +{adaptation.floor.toFixed(1)}
+                      уровень притязаний +{num(adaptation.aspiration)}, порог отказа +{num(adaptation.floor)}
                     </span>
                   </div>
                   <p className="mt-2 text-small leading-snug text-ink2">

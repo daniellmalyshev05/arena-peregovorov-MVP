@@ -192,6 +192,19 @@ body {
 .stagger > *:nth-child(4) { animation-delay: 240ms; }
 .stagger > *:nth-child(5) { animation-delay: 320ms; }
 
+/* Знак на первом экране: линия прочерчивается, точка сделки садится следом. */
+@keyframes mark-draw {
+  from { stroke-dashoffset: 34; }
+  to { stroke-dashoffset: 0; }
+}
+.mark-draw { stroke-dasharray: 34; animation: mark-draw 620ms var(--ease-out) 60ms both; }
+
+@keyframes mark-dot {
+  from { opacity: 0; transform: scale(0.4); }
+  to { opacity: 1; transform: none; }
+}
+.mark-dot { transform-origin: 13.2px 19.6px; animation: mark-dot 300ms var(--ease-out) 620ms both; }
+
 /* Пульс ожидания ответа второй стороны. */
 @keyframes typing {
   0%, 60%, 100% { opacity: 0.25; }

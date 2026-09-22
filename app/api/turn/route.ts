@@ -1,13 +1,16 @@
 import { NextResponse } from 'next/server'
 import { getScenario } from '@/lib/scenarios'
+import { applyConfig } from '@/lib/admin/config'
+import { decodeConfig } from '@/lib/admin/link'
 import { applyTurn, evaluateOffer, grantLeaked, sanitizeOffer, type LlmTurnOutput } from '@/lib/engine/state'
-import { buildSystemPrompt, buildUserMessage, buildVerdictInstruction } from '@/lib/llm/prompt'
+import { buildSystemPrompt, buildUserMessage, buildVerdictInstruction, describeCounter } from '@/lib/llm/prompt'
 import { parseLlmTurn } from '@/lib/llm/schema'
 import { callOpenRouter, type ChatMessage } from '@/lib/llm/openrouter'
 import { offlineTurn } from '@/lib/llm/offline'
 import { describeLeak, detectLeak } from '@/lib/llm/leak'
 import type { Deal, NegotiationState } from '@/lib/types'
 import { NO_ADAPTATION, type Adaptation } from '@/lib/engine/adaptive'
+import { citedFact } from '@/lib/engine/facts'
 
 export const runtime = 'nodejs'
 /**
@@ -19,6 +22,12 @@ export const maxDuration = 60
 
 interface TurnRequest {
   scenarioId: string
+  /**
+   * Настройка администратора в том же виде, что и в ссылке для участников.
+   * Разбирается тем же проверяющим декодером: испорченная строка даёт
+   * библиотечный кейс, а не вырожденный.
+   */
+  config?: string
   state: NegotiationState
   userText: string
   explicitOffer?: Deal
@@ -38,8 +47,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'bad json' }, { status: 400 })
   }
 
-  const scenario = getScenario(body.scenarioId)
-  if (!scenario) return NextResponse.json({ error: 'unknown scenario' }, { status: 404 })
+  const base = getScenario(body.scenarioId)
+  if (!base) return NextResponse.json({ error: 'unknown scenario' }, { status: 404 })
+
+  // Сервер играет тот же кейс, что видит участник. Раньше здесь всегда был
+  // библиотечный: сложность, тон, имя, роль, число раундов и установка
+  // администратора существовали только в браузере, а вердикты и промпт
+  // считались без них — вторая сторона представлялась чужим именем.
+  const decoded = typeof body.config === 'string' ? decodeConfig([base], body.config) : null
+  const scenario = decoded ? applyConfig(base, decoded.cfg) : base
   if (!body.state || !body.userText?.trim()) {
     return NextResponse.json({ error: 'missing state or text' }, { status: 400 })
   }
@@ -56,6 +72,9 @@ export async function POST(req: Request) {
   }
 
   const fact = body.factPlayed ? scenario.facts.find((f) => f.id === body.factPlayed) : undefined
+  // Факт, пересказанный своими словами, засчитывается так же, как приложенный.
+  const spokenFact = fact ? undefined : citedFact(scenario, body.state, body.userText)
+  const factPlayed = fact?.id ?? spokenFact?.id
 
   let llm: LlmTurnOutput | null = null
   let source: 'model' | 'offline' = 'offline'
@@ -68,7 +87,10 @@ export async function POST(req: Request) {
   // либо вручную на время демонстрации.
   const demo = process.env.DEMO_MODE === 'true' || body.forceOffline === true
   if (!demo) {
-    const system = buildSystemPrompt(scenario, body.state, adaptation.instruction) + (verdict ? buildVerdictInstruction(verdict.verdict, verdict.opponentSurplus) : '')
+    const counterTerms = verdict?.counter && normalizedOffer ? describeCounter(scenario, normalizedOffer, verdict.counter) : undefined
+    const system =
+      buildSystemPrompt(scenario, body.state, adaptation.instruction) +
+      (verdict ? buildVerdictInstruction(verdict.verdict, verdict.opponentSurplus, counterTerms) : '')
     const history: ChatMessage[] = body.state.transcript.slice(-8).map((t) => ({
       role: t.role === 'user' ? ('user' as const) : ('assistant' as const),
       content: t.role === 'user' ? t.text : JSON.stringify({ reply: t.text }),
@@ -105,7 +127,10 @@ export async function POST(req: Request) {
 
   if (!llm) {
     if (!demo && !fallbackReason) fallbackReason = 'неизвестная причина'
-    llm = offlineTurn(scenario, body.state, body.userText, verdict?.verdict, body.factPlayed)
+    llm = offlineTurn(
+      scenario, body.state, body.userText, verdict?.verdict, factPlayed,
+      verdict?.counter && normalizedOffer ? { offered: normalizedOffer, counter: verdict.counter } : undefined,
+    )
   }
 
   const result = applyTurn({
@@ -115,7 +140,8 @@ export async function POST(req: Request) {
     llm,
     explicitOffer: normalizedOffer,
     precomputedVerdict: verdict?.verdict,
-    factPlayed: body.factPlayed,
+    counter: verdict?.counter,
+    factPlayed,
     hypothesisUpdate: body.hypothesisUpdate,
   })
 
@@ -132,6 +158,8 @@ export async function POST(req: Request) {
   return NextResponse.json({
     state: result.state,
     hint: result.hint ?? leaked.hint,
+    hintProbe: result.hint ? result.hintProbe : leaked.hintProbe,
+    factCited: spokenFact?.id,
     verdict: result.verdict ?? verdict?.verdict,
     source,
     fallbackReason,

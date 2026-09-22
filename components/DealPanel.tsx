@@ -2,13 +2,16 @@
 
 import type { NegotiationState, Scenario } from '@/lib/types'
 import { optionOf, utility } from '@/lib/engine/utility'
+import { count } from '@/lib/plural'
 
 /**
  * Правая колонка: проект соглашения.
  *
- * Показывает ВСЕ условия сценария, а не только открытые. Серые строки
- * «не обсуждалось» — это карта неисследованной территории: игрок видит,
- * сколько ещё можно вытащить в разговор, но не видит, что там.
+ * Показывает открытые условия и одной строкой — сколько условий ещё не
+ * выведено в разговор. Названия неоткрытых условий здесь не стоят: раньше
+ * панель писала «Мощность и срок техприсоединения · не обсуждалось» с первого
+ * хода, то есть прямо называла тему, ради выяснения которой сценарий и сделан.
+ * Счётчик остаётся: игрок видит, что стол не исчерпан, но не видит, что на нём.
  */
 export function DealPanel({
   scenario,
@@ -45,6 +48,8 @@ export function DealPanel({
   // подсказка живёт до следующего хода и покрывает не все утверждения, а вкладка
   // «Досье» раньше ничем о себе не напоминала. Счётчик висит всегда и подсвечен,
   // пока не поставлено ни одной оценки, — это единственный полный путь к ним.
+  // Сколько условий ещё не выведено в разговор — числом, без названий.
+  const hidden = scenario.issues.filter((i) => !state.visibleIssues.includes(i.id)).length
   const probes = scenario.beliefProbes.length
   const noted = state.hypotheses.filter((h) => scenario.beliefProbes.some((p) => p.id === h.id)).length
 
@@ -93,19 +98,7 @@ export function DealPanel({
             const open = state.visibleIssues.includes(issue.id)
             const isNew = newIssues.includes(issue.id)
 
-            if (!open) {
-              return (
-                <div
-                  key={issue.id}
-                  className="grid grid-cols-[1fr_auto] items-baseline gap-3 border-b border-line2 px-4 py-3 lg:px-[18px]"
-                >
-                  <span className="text-small text-ink3">{issue.label}</span>
-                  <span className="whitespace-nowrap border-b border-dashed border-line-strong text-caption text-ink3">
-                    не обсуждалось
-                  </span>
-                </div>
-              )
-            }
+            if (!open) return null
 
             const current = optionOf(issue, state.deal[issue.id])
             const prevId = previousDeal[issue.id]
@@ -134,6 +127,15 @@ export function DealPanel({
               </div>
             )
           })}
+
+          {hidden > 0 && (
+            <div className="grid grid-cols-[1fr_auto] items-baseline gap-3 border-b border-line2 px-4 py-3 lg:px-[18px]">
+              <span className="text-small text-ink3">Ещё не на столе</span>
+              <span className="num whitespace-nowrap border-b border-dashed border-line-strong text-caption text-ink3">
+                {count(hidden, ['условие', 'условия', 'условий'])}
+              </span>
+            </div>
+          )}
 
           <p className="px-4 py-[14px] text-caption leading-snug text-ink3 lg:px-[18px]">
             Новые условия появляются здесь, когда вы выводите их в разговор.

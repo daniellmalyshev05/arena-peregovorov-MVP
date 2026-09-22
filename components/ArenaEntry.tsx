@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import type { Scenario } from '@/lib/types'
 import { applyConfig } from '@/lib/admin/config'
-import { decodeConfig } from '@/lib/admin/link'
+import { decodeConfig, encodeConfig } from '@/lib/admin/link'
 import { saveConfig, saveMode, tunedScenario } from '@/lib/admin/storage'
 import { ArenaClient } from './ArenaClient'
 
@@ -18,9 +18,13 @@ import { ArenaClient } from './ArenaClient'
  * Настройка из адреса важнее сохранённой: участник открыл ссылку
  * администратора именно ради неё. Разобранная настройка тут же ложится в
  * браузер, чтобы обновление страницы не сбросило сессию к библиотечному кейсу.
+ *
+ * Та же настройка уходит на сервер с каждым ходом (`configCode`). Вердикты по
+ * пакету и промпт модели считаются там, и без неё сервер играл бы библиотечный
+ * кейс: другое имя, другая сложность, другое число раундов.
  */
 export function ArenaEntry({ base }: { base: Scenario }) {
-  const [resolved, setResolved] = useState<{ scenario: Scenario; configured: boolean } | null>(null)
+  const [resolved, setResolved] = useState<{ scenario: Scenario; configured: boolean; configCode?: string } | null>(null)
 
   useEffect(() => {
     const code = new URLSearchParams(window.location.search).get('cfg')
@@ -28,10 +32,15 @@ export function ArenaEntry({ base }: { base: Scenario }) {
     if (fromLink) {
       saveConfig(fromLink.cfg)
       saveMode(fromLink.mode)
-      setResolved({ scenario: applyConfig(base, fromLink.cfg), configured: true })
+      setResolved({
+        scenario: applyConfig(base, fromLink.cfg),
+        configured: true,
+        configCode: encodeConfig(base, fromLink.cfg),
+      })
       return
     }
-    setResolved(tunedScenario(base))
+    const tuned = tunedScenario(base)
+    setResolved({ ...tuned, configCode: tuned.cfg ? encodeConfig(base, tuned.cfg) : undefined })
   }, [base])
 
   if (!resolved) return <div className="min-h-dvh bg-paper" />
@@ -40,6 +49,7 @@ export function ArenaEntry({ base }: { base: Scenario }) {
     <ArenaClient
       key={`${resolved.scenario.title}|${resolved.scenario.archetype}|${resolved.scenario.userBatna.value}`}
       scenario={resolved.scenario}
+      configCode={resolved.configCode}
     />
   )
 }

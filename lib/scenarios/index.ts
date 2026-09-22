@@ -3,6 +3,9 @@ import { residentAttraction } from './resident-attraction'
 import { contractorDelay } from './contractor-delay'
 import { residentDefault } from './resident-default'
 import { supplierHike } from './supplier-hike'
+import { itBudget } from './it-budget'
+import { retentionOffer } from './retention-offer'
+import { clientDiscount } from './client-discount'
 
 /**
  * Порядок здесь — это порядок прохождения, и он же порядок ступеней в холле.
@@ -17,12 +20,19 @@ import { supplierHike } from './supplier-hike'
  *
  * Прогрессивной выдачи инструментов (запасной вариант сначала готовым,
  * потом своими руками) в коде нет — холл её и не обещает.
+ *
+ * 5–7 — кейсы вне промышленного контура: внутренний бюджет, удержание
+ * сотрудника, продажа при продлении. Без них контекст администратора про ИТ,
+ * HR или продажи получал ответ «близкого кейса не нашлось».
  */
 export const scenarios: Scenario[] = [
   residentAttraction,
   contractorDelay,
   residentDefault,
   supplierHike,
+  itBudget,
+  retentionOffer,
+  clientDiscount,
 ]
 
 export function getScenario(id: string): Scenario | undefined {

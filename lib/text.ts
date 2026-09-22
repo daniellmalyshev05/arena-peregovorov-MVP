@@ -5,6 +5,15 @@
  * администратор пишет свои слова, и «Срезать ИТ-бюджет» превращалось
  * в «срезать ит-бюджет». Аббревиатуру в начале не трогаем вовсе.
  */
+/**
+ * Дробное число по-русски: разделитель — запятая. В интерфейсе рядом стоят
+ * «1,8 млрд ₽» из сценария и «22.1» из расчёта, и вторая запись читается
+ * как чужая.
+ */
+export function num(value: number, digits = 1): string {
+  return value.toFixed(digits).replace('.', ',')
+}
+
 export function decapitalize(text: string): string {
   const t = text.trim()
   if (!t) return t

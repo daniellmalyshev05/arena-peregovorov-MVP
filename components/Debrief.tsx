@@ -3,8 +3,11 @@
 import { useEffect, useState } from 'react'
 import type { NegotiationState, Scenario } from '@/lib/types'
 import type { ScoreReport } from '@/lib/engine/scoring'
-import { momentContext, type RewindCandidate } from '@/lib/engine/rewind'
+import { concededAt, momentContext, type RewindCandidate } from '@/lib/engine/rewind'
 import { analyze } from '@/lib/engine/utility'
+import { decapitalize, num } from '@/lib/text'
+import { newlyMastered } from '@/lib/profile'
+import { adaptationTargets, computeAdaptation } from '@/lib/engine/adaptive'
 import { Portrait } from './Portrait'
 import { ArenaMap } from './ArenaMap'
 import type { RunRecord } from '@/lib/profile'
@@ -79,6 +82,7 @@ export function Debrief({
   onRewind: (turnIndex: number) => void
 }) {
   const [step, setStep] = useState(0)
+  const [allRounds, setAllRounds] = useState(false)
 
   // Стрелки на клавиатуре листают разбор — так же, как кнопки по бокам.
   useEffect(() => {
@@ -91,7 +95,14 @@ export function Debrief({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
-  const economy = analyze(scenario, state.deal)
+  // Без соглашения совместной ценности нет вовсе: вся возможная осталась на
+  // столе. Раньше шаги 2 и 3 считали её по условиям, которые никто не подписал,
+  // и рядом с «соглашения нет, 0 / 20» стояло «использована на 45%».
+  const rawEconomy = analyze(scenario, state.deal)
+  const agreed = state.status === 'deal' || state.status === 'active'
+  const economy = agreed
+    ? rawEconomy
+    : { ...rawEconomy, efficiency: 0, valueLeftOnTable: Math.max(0, rawEconomy.maxJointSurplus) }
   const userTurns = state.transcript.filter((t) => t.role === 'user')
 
   /**
@@ -105,12 +116,14 @@ export function Debrief({
     if (index === undefined) return false
     const t = userTurns.find((x) => x.index === index)
     if (!t) return false
-    if (t.acts.includes('unilateral_concession') || t.acts.includes('personal_attack')) return true
+    if (concededAt(t) || t.acts.includes('personal_attack')) return true
     return !(t.revealed.length > 0 || t.acts.includes('objective_criterion'))
   }
   const fault = [
     score.rootCauseTurn,
-    ...candidates.filter((c) => c.kind !== 'missed_interest').map((c) => c.turnIndex),
+    ...candidates
+      .filter((c) => c.kind !== 'missed_interest' && c.kind !== 'turning_point' && c.kind !== 'walkaway')
+      .map((c) => c.turnIndex),
   ].find(blameable)
   // Ошибки нет — показываем поворот: ход, который открыл интерес или сдвинул условия.
   const turning =
@@ -120,13 +133,21 @@ export function Debrief({
   const isFault = fault !== undefined
   const STEPS = steps(isFault)
   const moment = focus !== undefined ? momentContext(state, focus) : undefined
+  const otherRounds = userTurns.filter((t) => !candidates.some((c) => c.turnIndex === t.index))
+  // Что изменила именно эта сессия: освоенные навыки и новые привычки, которые
+  // запомнила вторая сторона. Считается сравнением профиля до и после сессии.
+  const unlocked = newlyMastered(history)
+  const remembered = (() => {
+    const before = adaptationTargets(computeAdaptation(history.slice(0, -1))).map((t) => t.id)
+    return adaptationTargets(computeAdaptation(history)).filter((t) => !before.includes(t.id))
+  })()
   const total = useCountUp(score.total)
   const grown = useGrown()
 
   // Ключевой момент бывает и удачным — красный только там, где действительно ошибка.
   const momentBad = Boolean(
     moment?.turn &&
-      (moment.turn.acts.includes('unilateral_concession') || moment.turn.acts.includes('personal_attack')),
+      (concededAt(moment.turn) || moment.turn.acts.includes('personal_attack')),
   )
   const leftOnTableBad = economy.valueLeftOnTable > 8
 
@@ -156,6 +177,9 @@ export function Debrief({
             <button
               key={label}
               onClick={() => setStep(i)}
+              // Кнопка состоит из номера и подписи разными спанами: без явного
+              // имени скринридер читал её как безымянную.
+              aria-label={`Шаг ${i + 1} из ${STEPS.length}: ${label}`}
               aria-current={current ? 'step' : undefined}
               className={`press relative flex min-w-[124px] flex-1 items-center gap-2 px-2.5 py-2.5 text-left sm:min-w-[150px] sm:gap-2.5 sm:px-3 lg:px-4 ${
                 current ? '' : 'hover:bg-line2/60'
@@ -230,6 +254,35 @@ export function Debrief({
                 </div>
               </div>
 
+              {/* Прогрессия в момент, когда она произошла: навык подтвердился
+                  повторяемостью или вторая сторона запомнила привычку. */}
+              {(unlocked.length > 0 || remembered.length > 0) && (
+                <div className="mt-8 flex flex-wrap gap-2">
+                  {unlocked.map((s) => (
+                    <span
+                      key={s.id}
+                      className="rise flex items-center gap-2 rounded-md border border-accent-line bg-accent-soft px-3.5 py-2 text-small"
+                    >
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-accent" aria-hidden><path d="M20 6L9 17l-5-5" /></svg>
+                      <span>
+                        <span className="font-semibold text-accent">Навык освоен:</span> {decapitalize(s.title)}
+                      </span>
+                    </span>
+                  ))}
+                  {remembered.map((t) => (
+                    <span
+                      key={t.id}
+                      className="rise flex items-center gap-2 rounded-md border border-line bg-surface px-3.5 py-2 text-small"
+                    >
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-ink3" aria-hidden><path d="M12 8v5l3 2" /><circle cx="12" cy="12" r="9" /></svg>
+                      <span>
+                        <span className="font-semibold">Вторая сторона запомнила:</span> {decapitalize(t.cause)}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              )}
+
               <div className="mt-12 grid grid-cols-1 gap-x-14 gap-y-3.5 lg:grid-cols-2">
                 {score.lines.map((l) => (
                   <div key={l.key}>
@@ -297,7 +350,7 @@ export function Debrief({
                   <div>
                     <div className="lbl mb-1">Осталось на столе</div>
                     <span className={`num text-title font-semibold ${leftOnTableBad ? 'text-danger' : ''}`}>
-                      {economy.valueLeftOnTable.toFixed(1)}
+                      {num(economy.valueLeftOnTable)}
                     </span>
                     <span className="ml-1.5 text-ink3">пунктов ценности</span>
                   </div>
@@ -340,7 +393,7 @@ export function Debrief({
               <div className="absolute inset-x-0 top-[11px] h-[1.5px] bg-line" />
               {userTurns.map((t, i) => {
                 const left = userTurns.length > 1 ? (i / (userTurns.length - 1)) * 96 + 2 : 50
-                const bad = t.acts.includes('unilateral_concession') || t.acts.includes('personal_attack')
+                const bad = concededAt(t) || t.acts.includes('personal_attack')
                 const good = t.revealed.length > 0 || t.acts.includes('objective_criterion')
                 const isFocus = t.index === focus
                 return (
@@ -406,7 +459,7 @@ export function Debrief({
                     <div>
                       <div className="lbl mb-1">Осталось на столе</div>
                       <span className={`num font-semibold ${leftOnTableBad ? 'text-danger' : ''}`}>
-                        {economy.valueLeftOnTable.toFixed(1)}
+                        {num(economy.valueLeftOnTable)}
                       </span>{' '}
                       пунктов ценности
                     </div>
@@ -491,7 +544,7 @@ export function Debrief({
                 </div>
                 <div className="num ml-auto whitespace-nowrap text-right">
                   <span className="text-h2 font-semibold">
-                    {score.lines.find((l) => l.key === 'calibration')?.earned.toFixed(1)}
+                    {num(score.lines.find((l) => l.key === 'calibration')?.earned ?? 0)}
                   </span>
                   <div className="mt-0.5 text-label text-ink3">из 15 баллов</div>
                 </div>
@@ -561,13 +614,13 @@ export function Debrief({
               </h1>
               <p className="mt-2.5 max-w-[680px] text-body leading-relaxed text-ink2 text-pretty">
                 {scenario.persona.name.split(' ')[0]}, раскрытые интересы и всё состояние переговоров
-                восстановятся на этот раунд. Изменится только ваша формулировка.
+                восстановятся на этот раунд. Изменится только то, что вы скажете дальше.
               </p>
             </div>
 
             <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-2">
               {candidates.length === 0 && (
-                <p className="text-ink2">Явных развилок нет — переговоры прошли ровно.</p>
+                <p className="text-ink2">Переговоры закончились раньше первой реплики — возвращаться не к чему.</p>
               )}
               {candidates.map((c, i) => {
                 const said = state.transcript.find((t) => t.index === c.turnIndex && t.role === 'user')?.text
@@ -598,6 +651,43 @@ export function Debrief({
                 )
               })}
             </div>
+
+            {/* Любой другой раунд: холл обещает, что вернуть можно любой ход. */}
+            {otherRounds.length > 0 && (
+              <div className="mt-7 max-w-[860px]">
+                <button
+                  onClick={() => setAllRounds((v) => !v)}
+                  aria-expanded={allRounds}
+                  className="press flex items-center gap-2 rounded-sm text-small font-semibold text-accent"
+                >
+                  Вернуть другой раунд
+                  <svg
+                    width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
+                    strokeLinecap="round" strokeLinejoin="round" aria-hidden
+                    style={{ transform: allRounds ? 'rotate(180deg)' : 'none', transition: 'transform 200ms var(--ease-out)' }}
+                  >
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </button>
+                {allRounds && (
+                  <div className="rise mt-3 divide-y divide-line2 rounded-lg border border-line bg-surface">
+                    {otherRounds.map((t) => (
+                      <button
+                        key={t.index}
+                        onClick={() => onRewind(t.index)}
+                        className="press group flex w-full items-baseline gap-4 px-4 py-3 text-left hover:bg-line2/60"
+                      >
+                        <span className="num w-[68px] shrink-0 text-caption text-ink3">раунд {Math.floor(t.index / 2) + 1}</span>
+                        <span className="min-w-0 flex-1 truncate text-small text-ink2 group-hover:text-ink">«{t.text}»</span>
+                        <span className="shrink-0 text-ink3 transition-colors group-hover:text-accent" aria-hidden>
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             <a
               href="/"

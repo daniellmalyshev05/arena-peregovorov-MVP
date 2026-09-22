@@ -19,18 +19,31 @@ import { optionOf, utility } from '@/lib/engine/utility'
 export function OfferSheet({
   scenario,
   state,
+  initial,
   onClose,
   onSend,
   busy,
 }: {
   scenario: Scenario
   state: NegotiationState
+  /** С чего начинается черновик: последний отправленный пакет или встречное второй стороны. */
+  initial?: Deal
   onClose: () => void
   onSend: (offer: Deal, text: string) => void
   busy: boolean
 }) {
   const open = scenario.issues.filter((i) => state.visibleIssues.includes(i.id))
-  const [draft, setDraft] = useState<Deal>(() => ({ ...state.deal }))
+  // Черновик помнит последний пакет. Раньше после встречного или отказа шторка
+  // открывалась с исходных условий: игрок менял одно поле и незаметно
+  // отправлял пакет без всего, о чём уже договаривался в предыдущем.
+  const [draft, setDraft] = useState<Deal>(() => {
+    const seeded: Deal = { ...state.deal }
+    for (const issue of open) {
+      const id = initial?.[issue.id]
+      if (id && issue.options.some((o) => o.id === id)) seeded[issue.id] = id
+    }
+    return seeded
+  })
   const [text, setText] = useState('')
   const dialogRef = useRef<HTMLDivElement>(null)
   const returnFocus = useRef<HTMLElement | null>(null)

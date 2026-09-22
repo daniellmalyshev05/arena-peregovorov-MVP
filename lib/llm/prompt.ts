@@ -1,4 +1,4 @@
-import type { Archetype, NegotiationState, Scenario } from '@/lib/types'
+import type { Archetype, Deal, NegotiationState, Scenario } from '@/lib/types'
 import type { OfferVerdict } from '@/lib/engine/state'
 import { optionOf } from '@/lib/engine/utility'
 
@@ -109,15 +109,29 @@ proposedDeal заполняй только если ты сам предлага
   }`
 }
 
+/**
+ * Чем встречное предложение отличается от пакета игрока — словами уровней.
+ * Модель получает это как готовые условия и не выдумывает своих.
+ */
+export function describeCounter(scenario: Scenario, offered: Deal, counter: Deal): string {
+  return scenario.issues
+    .filter((i) => offered[i.id] !== counter[i.id])
+    .map((i) => `${i.label}: ${optionOf(i, counter[i.id]).label} вместо ${optionOf(i, offered[i.id]).label}`)
+    .join('; ')
+}
+
 /** Вердикт по предложению считает движок; модель получает его как приказ и только формулирует. */
-export function buildVerdictInstruction(verdict: OfferVerdict, opponentSurplus: number): string {
+export function buildVerdictInstruction(verdict: OfferVerdict, opponentSurplus: number, counterTerms?: string): string {
   if (verdict === 'accept') {
     return `\n\nСИСТЕМА: предложение собеседника для тебя выгодно (запас ${opponentSurplus.toFixed(1)} над твоей альтернативой). Прими его. Согласие сформулируй по-деловому, без восторга, можешь оговорить формальности.`
   }
+  const counter = counterTerms
+    ? ` Твоё встречное предложение уже посчитано, назови ровно его и ничего сверх: ${counterTerms}. Остальные условия пакета тебя устраивают. Других уровней и цифр не предлагай.`
+    : ' Встречных условий не называй: на таких условиях тебе сейчас нечего предложить.'
   if (verdict === 'counter') {
-    return `\n\nСИСТЕМА: предложение лучше отказа, но ниже того, на что ты рассчитывал (запас всего ${opponentSurplus.toFixed(1)}). НЕ принимай его. Торгуйся: скажи, чего не хватает, и назови встречное условие.`
+    return `\n\nСИСТЕМА: предложение лучше отказа, но ниже того, на что ты рассчитывал (запас всего ${opponentSurplus.toFixed(1)}). НЕ принимай его.${counter}`
   }
-  return `\n\nСИСТЕМА: предложение хуже твоей альтернативы (${opponentSurplus.toFixed(1)}). Откажись твёрдо и объясни, что при таких условиях проект для тебя не складывается.`
+  return `\n\nСИСТЕМА: предложение хуже твоей альтернативы (${opponentSurplus.toFixed(1)}). Откажись твёрдо и объясни, что при таких условиях проект для тебя не складывается.${counter}`
 }
 
 export function buildUserMessage(userText: string, factDetail?: string): string {

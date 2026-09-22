@@ -3,6 +3,8 @@
 import type { NegotiationState, Scenario, SpeechAct } from '@/lib/types'
 import type { ScoreReport } from '@/lib/engine/scoring'
 import { utility } from '@/lib/engine/utility'
+import { num } from '@/lib/text'
+import { count } from '@/lib/plural'
 
 const KEY = 'arena.profile.v1'
 
@@ -18,6 +20,8 @@ export interface RunRecord {
   unilateral: number
   conditional: number
   facts: number
+  /** Сделка оказалась хуже собственного запасного варианта. Может отсутствовать в старых записях профиля. */
+  belowBatna?: boolean
   brier: number | null
   acts: Partial<Record<SpeechAct, number>>
   /** Сессия после отката. Хранится, но в зачёт и в статистику не идёт. */
@@ -85,6 +89,7 @@ export function buildRun(
     unilateral: state.unilateralConcessions,
     conditional: state.conditionalOffers,
     facts: state.playedFacts.length,
+    belowBatna: state.status === 'deal' && utility(scenario, state.deal, 'user') < scenario.userBatna.value,
     brier,
     acts,
     training,
@@ -172,14 +177,14 @@ export function patterns(runs: RunRecord[]): Pattern[] {
       out.push({
         id: 'calibration',
         title: 'Вы часто уверены там, где не проверяли',
-        detail: `Средняя ошибка оценок — ${avg.toFixed(2)}. Не фиксируйте уверенность, пока не получили подтверждение.`,
+        detail: `Средняя ошибка оценок — ${num(avg, 2)}. Не фиксируйте уверенность, пока не получили подтверждение.`,
         tone: 'weak',
       })
     } else if (avg < 0.15) {
       out.push({
         id: 'calibrated',
         title: 'Ваша модель второй стороны точна',
-        detail: `Средняя ошибка оценок — ${avg.toFixed(2)}: вы уверены там, где действительно знаете.`,
+        detail: `Средняя ошибка оценок — ${num(avg, 2)}: вы уверены там, где действительно знаете.`,
         tone: 'strong',
       })
     }
@@ -196,6 +201,113 @@ export function patterns(runs: RunRecord[]): Pattern[] {
   }
 
   return out
+}
+
+/**
+ * Навыки переговорщика как допуски, а не как полоска опыта.
+ *
+ * ТЗ (§2.4) просит прогрессию и «развитие персонажа». XP-шкала здесь была бы
+ * самым шаблонным решением и ничего не измеряла бы: навык — не сумма очков, а
+ * повторяемость. Поэтому навык считается освоенным только тогда, когда он
+ * подтвердился в двух зачётных сессиях, и опирается ровно на те же числа,
+ * которыми считается разбор.
+ */
+export type SkillStatus = 'untested' | 'learning' | 'mastered'
+
+export interface Skill {
+  id: string
+  title: string
+  status: SkillStatus
+  detail: string
+}
+
+const CONFIRMATIONS = 2
+
+export function skills(runs: RunRecord[]): Skill[] {
+  const scored = runs.filter((r) => !r.training)
+  const rated = scored.filter((r) => r.brier !== null)
+
+  const build = (
+    id: string,
+    title: string,
+    pool: RunRecord[],
+    ok: (r: RunRecord) => boolean,
+    text: { untested: string; learning: (hits: number, n: number) => string; mastered: (hits: number) => string },
+  ): Skill => {
+    const hits = pool.filter(ok).length
+    if (pool.length < CONFIRMATIONS) return { id, title, status: 'untested', detail: text.untested }
+    if (hits >= CONFIRMATIONS) return { id, title, status: 'mastered', detail: text.mastered(hits) }
+    return { id, title, status: 'learning', detail: text.learning(hits, pool.length) }
+  }
+
+  const sessions = (n: number) => count(n, ['сессии', 'сессиях', 'сессиях'])
+
+  return [
+    build(
+      'discovery',
+      'Разведка интересов',
+      scored,
+      (r) => r.interests > 0 && r.revealed / r.interests >= 0.75,
+      {
+        untested: 'Нужны две зачётные сессии, чтобы отличить навык от удачного разговора.',
+        learning: (hits, n) => `Вы дошли до трёх четвертей интересов второй стороны в ${hits} из ${n}.`,
+        mastered: (hits) => `Вы доходите до интересов второй стороны: подтверждено в ${sessions(hits)}.`,
+      },
+    ),
+    build(
+      'exchange',
+      'Дисциплина обмена',
+      scored,
+      (r) => r.conditional > 0 && r.unilateral === 0,
+      {
+        untested: 'Нужны две зачётные сессии с отправленным пакетом.',
+        learning: (hits, n) => `Обмен без уступок «просто так» получился в ${hits} из ${n}.`,
+        mastered: (hits) => `Вы просите встречное условие и не отдаёте даром: подтверждено в ${sessions(hits)}.`,
+      },
+    ),
+    build(
+      'criteria',
+      'Опора на факты',
+      scored,
+      (r) => r.facts >= 2,
+      {
+        untested: 'Нужны две зачётные сессии, чтобы увидеть привычку опираться на факты.',
+        learning: (hits, n) => `Два и больше фактов в разговоре — в ${hits} из ${n}.`,
+        mastered: (hits) => `Вы спорите документом, а не настойчивостью: подтверждено в ${sessions(hits)}.`,
+      },
+    ),
+    build(
+      'model',
+      'Модель второй стороны',
+      rated,
+      (r) => (r.brier ?? 1) <= 0.2,
+      {
+        untested: 'Оцените утверждения в досье хотя бы в двух сессиях.',
+        learning: (hits, n) => `Точная модель второй стороны получилась в ${hits} из ${n}.`,
+        mastered: (hits) => `Вы понимаете вторую сторону точно и без самоуверенности: подтверждено в ${sessions(hits)}.`,
+      },
+    ),
+    build(
+      'walkaway',
+      'Сравнение с отказом',
+      scored,
+      (r) => !r.belowBatna,
+      {
+        untested: 'Нужны две зачётные сессии, доведённые до исхода.',
+        learning: (hits, n) => `Сделка была не хуже вашего запасного варианта в ${hits} из ${n}.`,
+        mastered: (hits) => `Вы не соглашаетесь на то, что хуже отказа: подтверждено в ${sessions(hits)}.`,
+      },
+    ),
+  ]
+}
+
+/** Навыки, освоенные именно этой сессией: то, что стоит показать сразу после разбора. */
+export function newlyMastered(runs: RunRecord[]): Skill[] {
+  if (!runs.length) return []
+  const before = skills(runs.slice(0, -1))
+  return skills(runs).filter(
+    (s) => s.status === 'mastered' && before.find((b) => b.id === s.id)?.status !== 'mastered',
+  )
 }
 
 /** Какой сценарий стоит пройти следующим — под слабое место, а не по порядку. */

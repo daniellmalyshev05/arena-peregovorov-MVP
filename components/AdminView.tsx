@@ -7,6 +7,7 @@ import { matchScenarios } from '@/lib/admin/match'
 import { encodeConfig } from '@/lib/admin/link'
 import { clearConfig, loadConfig, loadMode, saveConfig, saveMode, type OpponentMode } from '@/lib/admin/storage'
 import { auditScenario } from '@/lib/engine/audit'
+import { num } from '@/lib/text'
 import { ScenarioMap } from './ScenarioMap'
 
 /**
@@ -159,7 +160,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                     : !query
                       ? 'Опишите ситуацию выше — или выберите кейс из библиотеки сами.'
                       : match.confidence === 'слабое'
-                        ? 'Библиотека покрывает промышленный и закупочный контур. Описание не совпало ни с одним кейсом — выберите ближайший сами, иначе участник получит симуляцию не про то.'
+                        ? 'Библиотека покрывает промышленный и закупочный контур, внутренние бюджеты, удержание сотрудников и продажи. Описание не совпало ни с одним кейсом — выберите ближайший сами, иначе участник получит симуляцию не про то.'
                         : `Совпало по словам: ${match.matched.join(', ')}.`}
                 </p>
                 <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5">
@@ -339,14 +340,14 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
             <div className="rounded-lg border border-line bg-surface px-5 py-4">
               <dl className="flex flex-col gap-2.5 text-small">
                 <Row label="Зона, где выигрывают обе стороны">
-                  <span className="num font-semibold">{(audit.zopaShare * 100).toFixed(1)}%</span>
+                  <span className="num font-semibold">{num(audit.zopaShare * 100)}%</span>
                   <span className="text-ink3"> из {audit.totalDeals} вариантов</span>
                 </Row>
                 <Row label="Цена позиционного торга">
-                  <span className="num font-semibold text-danger">{audit.positional.userSurplus.toFixed(1)}</span>
+                  <span className="num font-semibold text-danger">{num(audit.positional.userSurplus)}</span>
                 </Row>
                 <Row label="Максимум совместной ценности">
-                  <span className="num font-semibold">+{audit.maxJointSurplus.toFixed(1)}</span>
+                  <span className="num font-semibold">+{num(audit.maxJointSurplus)}</span>
                 </Row>
                 <Row label="Дешевле всего отдать">
                   <span className="text-ink2">{audit.cheapestToGive.label}</span>
