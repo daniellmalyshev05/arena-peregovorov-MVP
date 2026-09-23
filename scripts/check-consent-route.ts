@@ -38,10 +38,10 @@ function provider(replies: string[]) {
   return calls
 }
 
-async function turn() {
+async function turn(userText = 'Дадим скидку на землю, если вы поднимете инвестиции.', extra: Record<string, unknown> = {}) {
   const res = await POST(new Request('http://x/api/turn', {
     method: 'POST',
-    body: JSON.stringify({ scenarioId: scenario.id, state, userText: 'Дадим скидку на землю, если вы поднимете инвестиции.' }),
+    body: JSON.stringify({ scenarioId: scenario.id, state, userText, ...extra }),
   }))
   return res.json()
 }
@@ -77,6 +77,33 @@ async function main() {
     const data = await turn()
     check(calls.length === 1, 'дозапроса нет')
     check(!data.repairs, 'диагностика пустая')
+  }
+
+  console.log('\nПроговорка на вопрос в лоб переписывается, а не засчитывается\n')
+  const secret = scenario.hiddenInterests.find((h) => h.unlockedBy.includes('spin_situation'))!
+  const blunt = 'Скажите прямо, чего вы на самом деле хотите?'
+  {
+    const calls = provider([secret.revealLine, 'Нам нужны конкурентные условия по земле — пока вы дороже альтернатив.'])
+    const data = await turn(blunt)
+    check(calls.length === 2, 'был дозапрос')
+    check(!data.state.revealedInterests.includes(secret.id), 'интерес не открыт')
+    check(!data.leaks, 'утечки в итоговой реплике нет')
+    check((data.repairs ?? []).some((r: string) => r.includes('проговорка')), 'исправление видно в диагностике')
+  }
+  {
+    provider([secret.revealLine, secret.revealLine])
+    const data = await turn(blunt)
+    check(data.state.revealedInterests.includes(secret.id), 'модель упорствует — сказанное засчитывается, как раньше')
+  }
+
+  console.log('\nПакет размечает код, а не модель\n')
+  {
+    const offer = { ...state.deal, [visible.id]: other.id }
+    globalThis.fetch = (async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({
+      reply: 'Посмотрю.', detectedActs: ['positional_bargaining'], revealedInterests: [],
+    }) } }] }), { status: 200 })) as typeof fetch
+    const data = await turn('Вот пакет.', { explicitOffer: offer })
+    check(!data.state.transcript.at(-2).acts.includes('positional_bargaining'), 'метка модели «позиционный торг» с пакета снята')
   }
 
   console.log('\n' + '═'.repeat(70))

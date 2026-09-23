@@ -297,8 +297,12 @@ export function applyTurn(input: ApplyTurnInput): ApplyTurnResult {
   }
   const acts = new Set<SpeechAct>(detectedActs)
   if (offered.length) {
+    // Характер хода с пакетом определяет только код. Метка модели «позиционный
+    // торг» рядом с посчитанным «условным обменом» давала в ленте две
+    // противоречащие друг другу оценки одной реплики.
     acts.delete('unilateral_concession')
     acts.delete('conditional_offer')
+    acts.delete('positional_bargaining')
     const move = moveOf(offered)
     if (move === 'unilateral') acts.add('unilateral_concession')
     if (move === 'conditional') acts.add('conditional_offer')

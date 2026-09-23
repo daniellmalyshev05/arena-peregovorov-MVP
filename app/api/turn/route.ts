@@ -4,7 +4,7 @@ import { applyConfig } from '@/lib/admin/config'
 import { decodeConfig } from '@/lib/admin/link'
 import { applyTurn, evaluateOffer, grantLeaked, sanitizeOffer, type LlmTurnOutput } from '@/lib/engine/state'
 import { buildNoOfferInstruction, buildSystemPrompt, buildUserMessage, buildVerdictInstruction, describeCounter } from '@/lib/llm/prompt'
-import { consentCorrection, detectConsent } from '@/lib/llm/consent'
+import { consentCorrection, detectConsent, leakCorrection } from '@/lib/llm/consent'
 import { parseLlmTurn } from '@/lib/llm/schema'
 import { callOpenRouter, type ChatMessage } from '@/lib/llm/openrouter'
 import { offlineTurn } from '@/lib/llm/offline'
@@ -88,6 +88,8 @@ export async function POST(req: Request) {
   // либо вручную на время демонстрации.
   const demo = process.env.DEMO_MODE === 'true' || body.forceOffline === true
   const startedAt = Date.now()
+  /** Разговор с моделью в этом ходе — для дозапроса, если реплику придётся переписать. */
+  let convo: { messages: ChatMessage[]; content: string } | undefined
   if (!demo) {
     const counterTerms = verdict?.counter && normalizedOffer ? describeCounter(scenario, normalizedOffer, verdict.counter) : undefined
     const system =
@@ -106,6 +108,7 @@ export async function POST(req: Request) {
     // Движок никогда не остаётся без ответа, но падение больше не немое:
     // каждая причина ухода в офлайн пишется в консоль сервера.
     const call = await callOpenRouter(messages)
+    if (call.content) convo = { messages, content: call.content }
     if (call.content) {
       const parsed = parseLlmTurn(call.content)
       if (parsed.turn) {
@@ -165,22 +168,46 @@ export async function POST(req: Request) {
     )
   }
 
-  const result = applyTurn({
-    scenario,
-    state: body.state,
-    userText: body.userText,
-    llm,
-    explicitOffer: normalizedOffer,
-    precomputedVerdict: verdict?.verdict,
-    counter: verdict?.counter,
-    factPlayed,
-    hypothesisUpdate: body.hypothesisUpdate,
-  })
+  const play = (turn: LlmTurnOutput) =>
+    applyTurn({
+      scenario,
+      state: body.state,
+      userText: body.userText,
+      llm: turn,
+      explicitOffer: normalizedOffer,
+      precomputedVerdict: verdict?.verdict,
+      counter: verdict?.counter,
+      factPlayed,
+      hypothesisUpdate: body.hypothesisUpdate,
+    })
+  let result = play(llm)
 
   // Единственное, чего движок запретить не может, — что модель проговорит секрет
-  // прозой, не пометив раскрытие. Запретить нельзя, показать можно.
-  const leaks = source === 'model' ? detectLeak(scenario, result.state, llm.reply) : []
+  // прозой, не пометив раскрытие. Раньше проговорённое сразу засчитывалось
+  // раскрытым — и вопрос в лоб, который код правильно не счёл вопросом SPIN,
+  // всё равно открывал интерес: модель отвечала «мне не защитить это перед
+  // советом». Теперь реплика с утечкой сначала переписывается одним дозапросом,
+  // как и согласие без решения. Засчитывается только то, что проговорено и после.
+  let leaks = source === 'model' ? detectLeak(scenario, result.state, llm.reply) : []
   for (const leak of leaks) console.warn(describeLeak(leak, llm.reply))
+  if (leaks.length && convo && Date.now() - startedAt < 30_000) {
+    const retry = await callOpenRouter(
+      [...convo.messages, { role: 'assistant', content: convo.content }, { role: 'user', content: leakCorrection(leaks.map((l) => l.label)) }],
+      { single: true, timeoutMs: 15_000 },
+    )
+    const reparsed = retry.content ? parseLlmTurn(retry.content).turn : null
+    if (reparsed && !detectConsent(reparsed.reply, verdict?.verdict)) {
+      const candidate = { ...llm, reply: reparsed.reply }
+      const replayed = play(candidate)
+      const still = detectLeak(scenario, replayed.state, candidate.reply)
+      if (still.length < leaks.length) {
+        repairs.push(`проговорка скрытого (${leaks.map((l) => l.id).join(', ')}): реплика переписана`)
+        llm = candidate
+        result = replayed
+        leaks = still
+      }
+    }
+  }
 
   // Проговорённое засчитывается раскрытым: иначе плашки «Раскрыт интерес» нет,
   // строка в соглашении не появляется, а в разборе игроку снимают баллы за
