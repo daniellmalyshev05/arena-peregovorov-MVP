@@ -6,7 +6,8 @@
  *   4. переход на личность — отдельный момент разбора, а не «копнуть глубже»;
  *   5. блеф помечен ошибкой по BATNA и разбирается отдельно;
  *   6. «почти всегда просите взамен» — только при повторяемости по сессиям;
- *   7. обоснованный выход стоит не меньше, чем уход от сделки на столе.
+ *   7. обоснованный выход стоит не меньше, чем уход от сделки на столе;
+ *   8. факт из досье без пакета не помечается уступкой.
  */
 import { scenarios, getScenario } from '@/lib/scenarios'
 import { applyConfig, defaultConfig, matchQuery } from '@/lib/admin/config'
@@ -123,6 +124,20 @@ console.log('\n7. Выход без разведки не дешевле ухо�
   const deal = score(s, st).lines.find((l) => l.key === 'deal')!
   check(deal.earned >= 8, `выход, когда из открытого ничего не складывалось: ${deal.earned} из 25`)
   check(!deal.detail.includes('выйти было правильно'), 'без разведки выход не называется правильным')
+}
+
+console.log('\n8. Факт из досье без пакета — не уступка\n')
+{
+  const s = getScenario('resident-attraction')!
+  const st = createInitialState(s)
+  const text = 'Подготовку кадров под запуск может взять на себя колледж при ОЭЗ.'
+  const llm = { ...offlineTurn(s, st, text), detectedActs: ['unilateral_concession' as const, 'objective_criterion' as const] }
+  const userTurn = (factPlayed?: string) =>
+    applyTurn({ scenario: s, state: st, userText: text, llm, factPlayed }).state.transcript.find((t) => t.role === 'user')!
+  const withFact = userTurn('polytech')
+  check(!withFact.acts.includes('unilateral_concession'), 'с фактом метки уступки нет')
+  check(withFact.acts.includes('objective_criterion'), 'факт помечен объективным критерием')
+  check(userTurn(undefined).acts.includes('unilateral_concession'), 'без факта метка модели остаётся')
 }
 
 console.log('\n' + '═'.repeat(70))

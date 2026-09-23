@@ -307,6 +307,8 @@ export function applyTurn(input: ApplyTurnInput): ApplyTurnResult {
 
   if (factPlayed && !state.playedFacts.includes(factPlayed)) state.playedFacts.push(factPlayed)
   if (factPlayed) acts.add('objective_criterion')
+  // Факт из досье без пакета — объективный критерий: метку уступки от модели снимаем.
+  if (factPlayed && !offered.length) acts.delete('unilateral_concession')
 
   for (const h of hypothesisUpdate ?? []) {
     const probe = scenario.beliefProbes.find((p) => p.id === h.id)
