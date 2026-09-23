@@ -83,10 +83,18 @@ export function DealPanel({
           )}
           {tab === 'dossier' && <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-accent" />}
         </button>
-        <span className="num ml-auto whitespace-nowrap text-caption text-ink3">
-          {tab === 'deal'
-            ? `согласовано ${settled} из ${scenario.issues.length}`
-            : `оценено ${noted} из ${probes}`}
+        {/* На 1024 px — рабочем минимуме — строка вкладок не помещалась в
+            колонку и тянула горизонтальную полосу на всю страницу. Слово
+            остаётся, длинная форма возвращается там, где есть место. */}
+        <span className="num ml-auto shrink-0 whitespace-nowrap text-caption text-ink3">
+          <span className="xl:hidden">
+            {tab === 'deal' ? `согласовано ${settled}/${scenario.issues.length}` : `оценено ${noted}/${probes}`}
+          </span>
+          <span className="hidden xl:inline">
+            {tab === 'deal'
+              ? `согласовано ${settled} из ${scenario.issues.length}`
+              : `оценено ${noted} из ${probes}`}
+          </span>
         </span>
       </div>
 

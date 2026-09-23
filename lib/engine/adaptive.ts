@@ -142,6 +142,22 @@ export function computeAdaptation(runs: RunRecord[]): Adaptation {
   }
 }
 
+/**
+ * Что учтёт вторая сторона, если поведение этой сессии повторится.
+ *
+ * Это прогноз, а не текущее состояние: адаптация по-прежнему включается со
+ * второй зачётной сессии, и порог не сдвинут. Но самая своя механика продукта —
+ * «растёт не игрок, а оппонент» — после единственной партии была видна только
+ * абзацем в будущем времени. Прогноз показывает её на собственных числах
+ * игрока, честно назвав себя прогнозом.
+ */
+export function forecastAdaptation(runs: RunRecord[]): Adaptation {
+  const scored = runs.filter((r) => !r.training)
+  if (scored.length !== 1) return NO_ADAPTATION
+  // Ровно то же вычисление, что и обычно, на предположении «это повторилось».
+  return computeAdaptation([scored[0], { ...scored[0] }])
+}
+
 /** Чем именно оппонент стал тяжелее — построчно, для экрана профиля. */
 export function adaptationTargets(a: Adaptation): { id: AdaptationTarget; title: string; cause: string }[] {
   return a.targets.map((t) => ({ id: t, title: TARGETS[t].title, cause: TARGETS[t].cause }))

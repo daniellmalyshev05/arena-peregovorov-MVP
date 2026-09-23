@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Deal, NegotiationState, Scenario } from '@/lib/types'
-import { createInitialState, walkAway } from '@/lib/engine/state'
+import { createInitialState, endNow, settlement, walkAway } from '@/lib/engine/state'
 import { score as computeScore, type ScoreReport } from '@/lib/engine/scoring'
 import { rewindCandidates } from '@/lib/engine/rewind'
 import { buildRun, loadRuns, saveRun, type RunRecord } from '@/lib/profile'
@@ -90,6 +90,9 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
   const [sheet, setSheet] = useState(false)
   const [pendingFact, setPendingFact] = useState<string | undefined>()
   const [confirmExit, setConfirmExit] = useState(false)
+  const [confirmEnd, setConfirmEnd] = useState(false)
+  // Завершение партии на телефоне живёт в шапке: в рельсе его не найти.
+  const [menu, setMenu] = useState<'closed' | 'root' | 'end' | 'exit'>('closed')
   // Вторая сторона согласилась: ждём решения игрока — фиксировать или продолжать.
   const [pendingDeal, setPendingDeal] = useState(false)
   // Отправленная реплика показывается сразу, не дожидаясь ответа сервера.
@@ -142,7 +145,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
 
   useEffect(() => {
     setHistory(loadRuns())
-    setMode(loadMode())
+    setMode(loadMode(scenario.id))
     // Жюри открывает тренажёр раньше, чем видит демонстрацию: первый вход
     // объясняет три зоны стола. Второй раз тур сам не появляется.
     if (!tourSeen()) setTour(0)
@@ -189,6 +192,18 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
     [replay, scenario],
   )
 
+  const leave = useCallback(
+    (kind: 'end' | 'exit') => {
+      // Момент выхода — тоже точка возврата: разбор предлагает его переиграть.
+      setSnapshots((prev) => [...prev, { turnIndex: state.transcript.length, state }])
+      const final = kind === 'end' ? endNow(state) : walkAway(state)
+      setState(final)
+      setClosing(true)
+      setTimeout(() => finish(final), 500)
+    },
+    [finish, state],
+  )
+
   const send = useCallback(
     async (payload: { userText: string; explicitOffer?: Deal }) => {
       if (busy || state.status !== 'active') return
@@ -199,8 +214,12 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
       const before = { ...state.deal }
       const visibleBefore = [...state.visibleIssues]
       setSnapshots((prev) => [...prev, { turnIndex: state.transcript.length, state }])
-      try {
-        const res = await fetch('/api/turn', {
+      // Запасной движок считается на сервере и наружу не ходит, поэтому у
+      // сорвавшегося хода есть второй шанс: провайдер мог не ответить в срок,
+      // а функция — упасть по таймауту. Раньше в этом месте ход просто
+      // терялся, и человек видел «отправьте реплику ещё раз».
+      const post = (forceOffline: boolean) =>
+        fetch('/api/turn', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -211,10 +230,20 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
             explicitOffer: payload.explicitOffer,
             factPlayed: pendingFact,
             adaptation,
-            forceOffline: mode === 'offline',
+            forceOffline,
           }),
         })
-        if (!res.ok) throw new Error('turn failed')
+
+      try {
+        let res: Response
+        try {
+          res = await post(mode === 'offline')
+          if (!res.ok) throw new Error('turn failed')
+        } catch {
+          if (mode === 'offline') throw new Error('turn failed')
+          res = await post(true)
+          if (!res.ok) throw new Error('turn failed')
+        }
         const data = await res.json()
         setPrevDeal(before)
         setNewIssues((data.state.visibleIssues as string[]).filter((i) => !visibleBefore.includes(i)))
@@ -229,7 +258,11 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
         // кончились, после согласия предлагается выбор: зафиксировать или
         // продолжить обсуждение — остальные условия ещё на столе.
         const outOfRounds = data.state.round > scenario.maxRounds
-        if (data.state.status === 'deal' && !outOfRounds) {
+        // Пакет приняли — значит игрок это видит, даже если стол закрыт не
+        // настолько, чтобы сделка засчиталась. Раньше сюда попадал только
+        // полностью собранный стол: вторая сторона соглашалась вслух, звала
+        // юристов, а на экране не появлялось ничего.
+        if ((data.state.status === 'deal' || data.verdict === 'accept') && !outOfRounds) {
           setPendingDeal(true)
         } else if (data.state.status !== 'active') {
           setClosing(true)
@@ -401,7 +434,32 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
       </div>
 
       <div className="shrink-0 border-t border-line/70 p-4 lg:p-[18px] lg:pt-4">
-        {confirmExit ? (
+        {confirmEnd ? (
+          <div className="rise rounded-md border border-accent-line bg-accent-soft p-3">
+            <p className="text-small leading-snug text-ink2">
+              {state.agreedAtRound
+                ? 'Закончить на том, о чём договорились? Разбор посчитает результат по текущему соглашению.'
+                : 'Закончить без соглашения? Итогом станет ваш запасной вариант — по нему и посчитается результат.'}
+            </p>
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => {
+                  setConfirmEnd(false)
+                  leave('end')
+                }}
+                className="press h-11 flex-1 rounded-md bg-accent text-caption font-semibold text-white hover:bg-accent/92 md:h-9"
+              >
+                Закончить
+              </button>
+              <button
+                onClick={() => setConfirmEnd(false)}
+                className="press h-11 flex-1 rounded-md border border-line bg-surface text-caption text-ink2 hover:border-ink3 md:h-9"
+              >
+                Вернуться
+              </button>
+            </div>
+          </div>
+        ) : confirmExit ? (
           <div className="rise rounded-md border border-danger/40 bg-surface p-3">
             <p className="text-small leading-snug text-ink2">
               Выйти из переговоров без сделки? Если сделка оказалась бы хуже вашего запасного варианта, выход — правильное решение.
@@ -410,33 +468,40 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
               <button
                 onClick={() => {
                   setConfirmExit(false)
-                  // Момент выхода — тоже точка возврата: разбор предлагает его переиграть.
-                  setSnapshots((prev) => [...prev, { turnIndex: state.transcript.length, state }])
-                  const final = walkAway(state)
-                  setState(final)
-                  setClosing(true)
-                  setTimeout(() => finish(final), 500)
+                  leave('exit')
                 }}
-                className="press h-9 flex-1 rounded-md bg-danger text-caption font-semibold text-white"
+                className="press h-11 flex-1 rounded-md bg-danger text-caption font-semibold text-white md:h-9"
               >
                 Выйти
               </button>
               <button
                 onClick={() => setConfirmExit(false)}
-                className="press h-9 flex-1 rounded-md border border-line text-caption text-ink2 hover:border-ink3"
+                className="press h-11 flex-1 rounded-md border border-line text-caption text-ink2 hover:border-ink3 md:h-9"
               >
                 Остаться
               </button>
             </div>
           </div>
         ) : (
-          <button
-            onClick={() => setConfirmExit(true)}
-            disabled={busy || state.status !== 'active'}
-            className="press h-9 w-full shrink-0 rounded-md border border-line text-small text-ink2 hover:border-danger hover:text-danger disabled:opacity-40"
-          >
-            Выйти из переговоров
-          </button>
+          /* Два разных смысла, которые раньше были одной кнопкой: закончить
+             партию и осознанно отказаться от сделки. Первое — обычный конец
+             разговора и дорога к разбору, второе — переговорный ход. */
+          <div className="flex flex-col gap-1.5">
+            <button
+              onClick={() => setConfirmEnd(true)}
+              disabled={busy || state.status !== 'active'}
+              className="press h-11 w-full shrink-0 rounded-md border border-accent-line bg-surface text-small font-semibold text-accent hover:bg-accent-soft disabled:opacity-40 md:h-9"
+            >
+              Закончить и посмотреть разбор
+            </button>
+            <button
+              onClick={() => setConfirmExit(true)}
+              disabled={busy || state.status !== 'active'}
+              className="press h-11 w-full shrink-0 rounded-md text-small text-ink3 hover:text-danger disabled:opacity-40 md:h-9"
+            >
+              Выйти из переговоров
+            </button>
+          </div>
         )}
       </div>
     </div>
@@ -452,16 +517,19 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
       }}
     >
       {/* Шапка */}
-      <header className="flex h-14 shrink-0 items-center gap-4 border-b border-line bg-surface px-4 lg:px-5">
-        <div className="flex min-w-0 items-center gap-3">
-          <a href="/" aria-label="К списку сценариев" className="press shrink-0 rounded-sm p-1 text-ink2 hover:bg-line2">
+      {/* Шапка на телефоне складывалась сама на себя: название не сжималось,
+          и роль, счётчик раундов и кнопки налезали друг на друга. Узкий экран
+          оставляет главное — куда вернуться, где ты и что можно сделать. */}
+      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line bg-surface px-4 md:gap-4 lg:px-5">
+        <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">
+          <a href="/" aria-label="К списку сценариев" className="press tap -ml-1.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-ink2 hover:bg-line2 md:ml-0 md:h-8 md:w-8">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
           </a>
-          <span className="shrink-0 font-semibold">{scenario.title}</span>
-          <span className="shrink-0 text-ink3">·</span>
-          <span className="truncate text-small text-ink2">ваша роль: {scenario.userRole}</span>
+          <span className="min-w-0 truncate font-semibold md:shrink-0">{scenario.title}</span>
+          <span className="hidden shrink-0 text-ink3 md:inline">·</span>
+          <span className="hidden truncate text-small text-ink2 md:inline">ваша роль: {scenario.userRole}</span>
         </div>
-        <div className="ml-auto flex shrink-0 items-center gap-3 lg:gap-[18px]">
+        <div className="flex shrink-0 items-center gap-1.5 md:ml-auto md:gap-3 lg:gap-[18px]">
           {replay && (
             <span className="flex h-7 items-center gap-[7px] rounded-sm bg-accent-soft px-2.5 text-caption font-semibold text-accent">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 4v4h4" /></svg>
@@ -472,13 +540,86 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
           <button
             onClick={() => setTour(0)}
             aria-label="Как устроен стол переговоров"
-            className="press flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-line-strong text-caption font-semibold text-ink2 hover:border-accent hover:bg-accent-soft hover:text-accent"
+            className="press tap flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-line-strong text-caption font-semibold text-ink2 hover:border-accent hover:bg-accent-soft hover:text-accent"
           >
             ?
           </button>
           <span className="num whitespace-nowrap text-small text-ink3">
-            раунд {Math.min(state.round, scenario.maxRounds)} из {scenario.maxRounds}
+            раунд {Math.min(state.round, scenario.maxRounds)}
+            <span className="md:hidden">/{scenario.maxRounds}</span>
+            <span className="hidden md:inline"> из {scenario.maxRounds}</span>
           </span>
+
+          {/* Завершить партию на телефоне было негде: обе кнопки лежали в
+              подвале панели «Цель и факты», за двумя действиями и прокруткой.
+              Дорога к разбору — к лучшему, что есть в продукте, — не должна
+              начинаться с поиска. На широком экране они остаются в рельсе. */}
+          <div className="relative md:hidden">
+            <button
+              onClick={() => setMenu((m) => (m === 'closed' ? 'root' : 'closed'))}
+              aria-label="Действия с партией"
+              aria-expanded={menu !== 'closed'}
+              disabled={busy || state.status !== 'active'}
+              className="press tap -mr-1.5 flex h-11 w-11 items-center justify-center rounded-md text-ink2 hover:bg-line2 disabled:opacity-40"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <circle cx="5" cy="12" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="19" cy="12" r="1.7" />
+              </svg>
+            </button>
+            {menu !== 'closed' && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setMenu('closed')} />
+                <div className="rise absolute right-0 top-[46px] z-50 w-[286px] rounded-lg border border-line bg-surface p-2 shadow-[0_12px_32px_-12px_rgba(24,22,18,0.28)]">
+                  {menu === 'root' ? (
+                    <>
+                      <button
+                        onClick={() => setMenu('end')}
+                        className="press flex min-h-11 w-full items-center rounded-md px-3 text-left text-small font-semibold text-accent hover:bg-accent-soft"
+                      >
+                        Закончить и посмотреть разбор
+                      </button>
+                      <button
+                        onClick={() => setMenu('exit')}
+                        className="press flex min-h-11 w-full items-center rounded-md px-3 text-left text-small text-ink2 hover:bg-line2"
+                      >
+                        Выйти из переговоров
+                      </button>
+                    </>
+                  ) : (
+                    <div className="px-3 py-2">
+                      <p className="text-small leading-snug text-ink2">
+                        {menu === 'end'
+                          ? state.agreedAtRound
+                            ? 'Закончить на том, о чём договорились? Разбор посчитает результат по текущему соглашению.'
+                            : 'Закончить без соглашения? Итогом станет ваш запасной вариант — по нему и посчитается результат.'
+                          : 'Выйти из переговоров без сделки? Если сделка оказалась бы хуже вашего запасного варианта, выход — правильное решение.'}
+                      </p>
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          onClick={() => {
+                            const kind = menu === 'end' ? 'end' : 'exit'
+                            setMenu('closed')
+                            leave(kind)
+                          }}
+                          className={`press h-11 flex-1 rounded-md text-caption font-semibold text-white ${
+                            menu === 'end' ? 'bg-accent hover:bg-accent/92' : 'bg-danger'
+                          }`}
+                        >
+                          {menu === 'end' ? 'Закончить' : 'Выйти'}
+                        </button>
+                        <button
+                          onClick={() => setMenu('root')}
+                          className="press h-11 flex-1 rounded-md border border-line text-caption text-ink2"
+                        >
+                          {menu === 'end' ? 'Вернуться' : 'Остаться'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
@@ -486,7 +627,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
       <div className="flex shrink-0 gap-2 border-b border-line bg-surface px-4 py-2 md:hidden">
         <button
           onClick={() => setPanel('brief')}
-          className="press flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md border border-line text-small text-ink2"
+          className="press flex h-11 flex-1 items-center justify-center gap-1.5 rounded-md border border-line text-small text-ink2"
         >
           Цель и факты
           <span className="num text-caption text-ink3">
@@ -495,7 +636,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
         </button>
         <button
           onClick={() => setPanel('deal')}
-          className="press flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md border border-line text-small text-ink2"
+          className="press flex h-11 flex-1 items-center justify-center gap-1.5 rounded-md border border-line text-small text-ink2"
         >
           Соглашение
           <span className="num text-caption text-ink3">
@@ -537,7 +678,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
                   <button
                     onClick={() => setIntro(false)}
                     aria-label="Закрыть"
-                    className="press shrink-0 rounded-sm p-1 text-ink3 hover:bg-line2 hover:text-ink"
+                    className="press tap -mr-1.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-ink3 hover:bg-line2 hover:text-ink md:mr-0 md:h-8 md:w-8"
                   >
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                       <path d="M18 6L6 18M6 6l12 12" />
@@ -643,37 +784,76 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
                 )}
               </div>
             )}
-            {/* Согласие получено: закрыть сделку или торговаться дальше — решает игрок. */}
-            {pendingDeal && !busy && (
-              <div className="rise ml-11 max-w-[600px] rounded-md border border-accent-line bg-accent-soft px-4 py-3.5">
-                <p className="text-small leading-snug">
-                  Вторая сторона согласна на этот пакет. Условия уже в соглашении: можно зафиксировать сделку
-                  или продолжить обсуждение — {count(scenario.maxRounds - state.round + 1, ['раунд', 'раунда', 'раундов'])} ещё есть.
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button
-                    onClick={() => {
-                      setPendingDeal(false)
-                      setClosing(true)
-                      setTimeout(() => finish(state), 600)
-                    }}
-                    className="press flex h-9 items-center rounded-md bg-accent px-4 text-caption font-semibold text-white hover:bg-accent/92"
-                  >
-                    Зафиксировать сделку
-                  </button>
-                  <button
-                    onClick={() => {
-                      setPendingDeal(false)
-                      setState((s) => ({ ...s, status: 'active' }))
-                      inputRef.current?.focus()
-                    }}
-                    className="press flex h-9 items-center rounded-md border border-line bg-surface px-4 text-caption text-ink2 hover:border-accent hover:text-accent"
-                  >
-                    Продолжить обсуждение
-                  </button>
+            {/* Согласие получено: закрыть сделку или торговаться дальше — решает игрок.
+                Пакет могут принять и тогда, когда стол закрыт не полностью. Такое
+                согласие тоже обязано быть видимым — с честным числом условий,
+                которых не хватает до сделки, и с возможностью закрыться как есть. */}
+            {pendingDeal && !busy && (() => {
+              const settle = settlement(scenario, state)
+              const closable = state.status === 'deal'
+              const closeDeal = () => {
+                setPendingDeal(false)
+                setClosing(true)
+                setTimeout(() => finish(closable ? state : { ...state, status: 'deal' as const }), 600)
+              }
+              const resume = () => {
+                setPendingDeal(false)
+                setState((s) => ({ ...s, status: 'active' }))
+                inputRef.current?.focus()
+              }
+              const close = (
+                <button
+                  key="close"
+                  onClick={closeDeal}
+                  className={
+                    closable
+                      ? 'press flex h-9 items-center rounded-md bg-accent px-4 text-caption font-semibold text-white hover:bg-accent/92'
+                      : 'press flex h-9 items-center rounded-md border border-line bg-surface px-4 text-caption text-ink2 hover:border-accent hover:text-accent'
+                  }
+                >
+                  {closable ? 'Зафиксировать сделку' : 'Зафиксировать как есть'}
+                </button>
+              )
+              const more = (
+                <button
+                  key="more"
+                  onClick={resume}
+                  className={
+                    closable
+                      ? 'press flex h-9 items-center rounded-md border border-line bg-surface px-4 text-caption text-ink2 hover:border-accent hover:text-accent'
+                      : 'press flex h-9 items-center rounded-md bg-accent px-4 text-caption font-semibold text-white hover:bg-accent/92'
+                  }
+                >
+                  Продолжить обсуждение
+                </button>
+              )
+              return (
+                <div className="rise ml-11 max-w-[600px] rounded-md border border-accent-line bg-accent-soft px-4 py-3.5">
+                  <p className="text-small leading-snug">
+                    {closable ? (
+                      <>
+                        Вторая сторона согласна на этот пакет. Условия уже в соглашении: можно зафиксировать сделку
+                        или продолжить обсуждение — {count(scenario.maxRounds - state.round + 1, ['раунд', 'раунда', 'раундов'])} ещё есть.
+                      </>
+                    ) : Number.isFinite(settle.needed) ? (
+                      <>
+                        Вторая сторона приняла пакет, эти условия уже в соглашении. Сделка засчитывается, когда
+                        договорённостью закрыта большая часть стола: пока таких условий {settle.moved},
+                        нужно {settle.needed}. Можно добрать остальное или зафиксировать то, что есть.
+                      </>
+                    ) : (
+                      <>
+                        Вторая сторона приняла пакет, эти условия уже в соглашении. Но на столе пока
+                        только {settle.visible} из {scenario.issues.length} условий сделки: чтобы она
+                        засчиталась, нужно вывести в разговор хотя бы три. Спросите о том, чего ещё не
+                        видите, — или зафиксируйте то, что есть.
+                      </>
+                    )}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">{closable ? [close, more] : [more, close]}</div>
                 </div>
-              </div>
-            )}
+              )
+            })()}
 
             {/* Встречное предложение: условия посчитаны движком, его можно взять в шторку как есть. */}
             {counterView && !busy && (
@@ -723,7 +903,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
                       setText(o)
                       inputRef.current?.focus()
                     }}
-                    className="press max-w-full truncate rounded-sm border border-line bg-surface px-2.5 py-1 text-caption text-ink2 hover:border-accent hover:bg-accent-soft hover:text-accent"
+                    className="press flex min-h-11 max-w-full items-center truncate rounded-sm border border-line bg-surface px-2.5 py-1 text-caption text-ink2 hover:border-accent hover:bg-accent-soft hover:text-accent md:min-h-0"
                   >
                     {o}
                   </button>
@@ -815,7 +995,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
                   markTourSeen()
                 }
               }}
-              className="press flex h-9 items-center rounded-md bg-accent px-4 text-caption font-semibold text-white hover:bg-accent/92"
+              className="press flex h-11 items-center rounded-md bg-accent px-4 text-caption font-semibold text-white hover:bg-accent/92 md:h-9"
             >
               {tour + 1 < TOUR.length ? 'Дальше' : 'Понятно'}
             </button>
@@ -825,7 +1005,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
                   setTour(null)
                   markTourSeen()
                 }}
-                className="press flex h-9 items-center rounded-md px-3 text-caption text-ink3 hover:text-ink2"
+                className="press flex h-11 items-center rounded-md px-3 text-caption text-ink3 hover:text-ink2 md:h-9"
               >
                 Пропустить
               </button>
@@ -838,7 +1018,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
         <div className="fixed inset-0 z-40 flex flex-col bg-paper md:hidden">
           <div className="flex h-12 shrink-0 items-center justify-between border-b border-line bg-surface px-4">
             <span className="font-semibold">{panel === 'brief' ? 'Цель и факты' : 'Соглашение'}</span>
-            <button onClick={() => setPanel(null)} aria-label="Закрыть" className="press rounded-sm p-1 text-ink2 hover:bg-line2">
+            <button onClick={() => setPanel(null)} aria-label="Закрыть" className="press tap -mr-2 flex h-11 w-11 items-center justify-center rounded-md text-ink2 hover:bg-line2">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M18 6L6 18M6 6l12 12" />
               </svg>

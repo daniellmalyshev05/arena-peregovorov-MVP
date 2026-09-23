@@ -41,7 +41,7 @@ export async function callOpenRouter(messages: ChatMessage[]): Promise<CallResul
   let lastError = ''
   for (const [i, extra] of attempts.entries()) {
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 30_000)
+    const timeout = setTimeout(() => controller.abort(), 20_000)
     try {
       const res = await fetch(ENDPOINT, {
         method: 'POST',
@@ -67,7 +67,7 @@ export async function callOpenRouter(messages: ChatMessage[]): Promise<CallResul
       lastError = 'провайдер вернул пустой ответ: ' + JSON.stringify(data).slice(0, 300)
     } catch (e) {
       const err = e as Error
-      lastError = err.name === 'AbortError' ? 'таймаут 30 с' : `сеть: ${err.message}`
+      lastError = err.name === 'AbortError' ? 'таймаут 20 с' : `сеть: ${err.message}`
     } finally {
       clearTimeout(timeout)
     }

@@ -3,12 +3,13 @@
 import { useEffect, useState } from 'react'
 import type { Scenario } from '@/lib/types'
 import { clearRuns, loadRuns, patterns, skills, type RunRecord } from '@/lib/profile'
-import { adaptationLevel, adaptationTargets, computeAdaptation } from '@/lib/engine/adaptive'
+import { adaptationLevel, adaptationTargets, computeAdaptation, forecastAdaptation } from '@/lib/engine/adaptive'
 import { count, plural } from '@/lib/plural'
 import { num } from '@/lib/text'
 
 const SKILL_STATUS: Record<string, string> = {
   untested: 'не проверялся',
+  seen: 'одна сессия из двух',
   learning: 'в работе',
   mastered: 'освоен',
 }
@@ -41,6 +42,8 @@ export function ProfileView({ scenarios }: { scenarios: Scenario[] }) {
   const mastered = skillList.filter((s) => s.status === 'mastered').length
   const found = patterns(runs)
   const adaptation = computeAdaptation(runs)
+  // Прогноз живёт ровно одну сессию: со второй включается настоящая адаптация.
+  const forecast = forecastAdaptation(runs)
   const weak = found.filter((p) => p.tone === 'weak')
   const strong = found.filter((p) => p.tone === 'strong')
   const name = (id: string) => scenarios.find((s) => s.id === id)?.title ?? id
@@ -48,7 +51,7 @@ export function ProfileView({ scenarios }: { scenarios: Scenario[] }) {
   return (
     <main className="min-h-dvh bg-paper">
       <header className="flex h-14 items-center gap-3 border-b border-line bg-surface px-4 lg:px-5">
-        <a href="/" aria-label="К списку сценариев" className="press rounded-sm p-1 text-ink2 hover:bg-line2">
+        <a href="/" aria-label="К списку сценариев" className="press tap -ml-1.5 flex h-11 w-11 items-center justify-center rounded-md text-ink2 hover:bg-line2 md:ml-0 md:h-8 md:w-8">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
         </a>
         <span className="font-semibold">Профиль переговорщика</span>
@@ -76,7 +79,9 @@ export function ProfileView({ scenarios }: { scenarios: Scenario[] }) {
                 <h1 className="text-h2 font-semibold leading-tight tracking-[-0.016em] text-balance">
                   {weak.length
                     ? 'Вот что повторяется от переговоров к переговорам'
-                    : 'Устойчивых слабых мест пока не видно'}
+                    : scored.length < 2
+                      ? 'Одна сессия сыграна — привычки станут видны со второй'
+                      : 'Устойчивых слабых мест пока не видно'}
                 </h1>
                 <p className="mt-2.5 max-w-[620px] leading-relaxed text-ink2">
                   Считается только по зачётным сессиям. Переигранные моменты сюда не попадают.
@@ -162,11 +167,36 @@ export function ProfileView({ scenarios }: { scenarios: Scenario[] }) {
             <section className="mt-10">
               <div className="lbl mb-3 border-b border-line pb-2">Какой будет вторая сторона</div>
               {adaptation.targets.length === 0 ? (
-                <p className="rounded-md border border-line bg-surface px-5 py-4 leading-relaxed text-ink2">
-                  Играет по базовым настройкам кейса. Жёстче она станет адресно — там, где привычка
-                  повторяется: уступки без встречного условия поднимают её аппетит, редкие вопросы
-                  закрывают её интересы, ставка без опоры на факты делает её упрямее.
-                </p>
+                <div className="rounded-md border border-line bg-surface px-5 py-4">
+                  <p className="leading-relaxed text-ink2">
+                    Играет по базовым настройкам кейса. Жёстче она станет адресно — там, где привычка
+                    повторяется: уступки без встречного условия поднимают её аппетит, редкие вопросы
+                    закрывают её интересы, ставка без опоры на факты делает её упрямее.
+                  </p>
+                  {forecast.targets.length > 0 && (
+                    <div className="mt-4 border-t border-line2 pt-4">
+                      <div className="lbl mb-2">Если это повторится</div>
+                      <p className="text-small leading-snug text-ink2">
+                        Одна сессия — ещё не привычка, и подкручивать по ней нечестно. Но если то же
+                        повторится в следующей партии, вторая сторона сядет за стол вот такой:
+                      </p>
+                      {/* Причины здесь не подписаны сознательно: они сформулированы
+                          как повторяющаяся привычка («вы часто уступали»), а за одной
+                          сессией такого права нет. Что именно случилось в этой партии,
+                          построчно сказано выше, в навыках. */}
+                      <ul className="mt-3 flex flex-wrap gap-x-2 gap-y-2">
+                        {adaptationTargets(forecast).map((t) => (
+                          <li
+                            key={t.id}
+                            className="rounded-sm border border-line bg-paper px-2.5 py-1 text-small font-medium"
+                          >
+                            {t.title}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <div className="rounded-md border border-accent-line bg-accent-soft px-5 py-4">
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">

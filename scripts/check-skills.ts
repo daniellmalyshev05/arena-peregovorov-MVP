@@ -7,6 +7,7 @@
  * той сессии, которая его закрыла.
  */
 import { newlyMastered, skills, type RunRecord } from '../lib/profile'
+import { computeAdaptation, forecastAdaptation } from '../lib/engine/adaptive'
 
 let failed = 0
 const check = (ok: boolean, text: string) => {
@@ -37,7 +38,7 @@ const status = (runs: RunRecord[], id: string) => skills(runs).find((s) => s.id 
 
 console.log('Навык не выдаётся за одну сессию')
 check(skills([]).every((s) => s.status === 'untested'), 'пустой профиль — все навыки не проверялись')
-check(status([run()], 'discovery') === 'untested', 'одна сильная сессия навык не закрывает')
+check(status([run()], 'discovery') === 'seen', 'одна сильная сессия навык не закрывает, но не прячется')
 check(status([run(), run()], 'discovery') === 'mastered', 'две подтверждающие сессии — навык освоен')
 
 console.log('\nНавык требует именно повторяемости')
@@ -47,7 +48,7 @@ check(status([run({ facts: 0 }), run({ facts: 1 })], 'criteria') === 'learning',
 check(status([run({ belowBatna: true }), run()], 'walkaway') === 'learning', 'сделка хуже отказа ломает сравнение с отказом')
 
 console.log('\nТренировочные сессии в зачёт не идут')
-check(status([run(), run({ training: true }), run({ training: true })], 'discovery') === 'untested', 'ветки после возврата навык не закрывают')
+check(status([run(), run({ training: true }), run({ training: true })], 'discovery') === 'seen', 'ветки после возврата навык не закрывают')
 
 console.log('\nМодель второй стороны считается только по оценённым сессиям')
 check(status([run({ brier: null }), run({ brier: null })], 'model') === 'untested', 'без оценок в досье навык не проверялся')
@@ -61,6 +62,25 @@ console.log('\nУведомление показывается один раз')
   check(fresh.includes('discovery') && fresh.includes('exchange'), 'сессия, закрывшая навык, показывает его в разборе')
   check(newlyMastered([...two, run()]).length === 0, 'следующая сессия тот же навык повторно не объявляет')
   check(newlyMastered([run()]).length === 0, 'первая сессия ничего не объявляет')
+}
+
+console.log('\nПосле одной сессии профиль говорит по существу')
+{
+  const one = skills([run()])
+  check(one.every((sk) => sk.status !== 'untested' || sk.id === 'model'), 'ни один сыгранный навык не остаётся «не проверялся»')
+  check(one.every((sk) => sk.detail.trim().length > 0), 'у каждого навыка есть, что сказать')
+  const weakRun = skills([run({ revealed: 0, facts: 0, unilateral: 2, belowBatna: true, brier: 0.6 })])
+  check(weakRun.every((sk) => sk.status === 'seen'), 'слабая первая сессия тоже описана, а не спрятана')
+  check(
+    weakRun.find((sk) => sk.id === 'walkaway')!.detail.includes('хуже вашего запасного варианта'),
+    'провал назван своими словами',
+  )
+  check(skills([run({ brier: null })]).find((sk) => sk.id === 'model')!.status === 'untested', 'без оценок в досье навык честно не проверялся')
+
+  const fc = forecastAdaptation([run({ unilateral: 2, revealed: 0, facts: 0 })])
+  check(fc.targets.length > 0, `прогноз оппонента строится по одной сессии (${fc.targets.join(', ')})`)
+  check(forecastAdaptation([run(), run()]).targets.length === 0, 'со второй сессии прогноз уступает место настоящей адаптации')
+  check(computeAdaptation([run({ unilateral: 2 })]).targets.length === 0, 'порог адаптации не сдвинут: одна сессия оппонента не меняет')
 }
 
 console.log('\n' + '═'.repeat(70))

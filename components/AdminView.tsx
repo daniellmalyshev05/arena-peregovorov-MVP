@@ -37,12 +37,18 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
       setSaved(true)
       setManual(true)
     }
-    setMode(loadMode())
     setOrigin(window.location.origin)
     setReady(true)
   }, [scenarios])
 
   const base = scenarios.find((s) => s.id === cfg.baseScenarioId) ?? scenarios[0]
+
+  // Режим хранится при кейсе, а не при браузере, поэтому читается заново на
+  // каждой смене кейса: переключатель показывает то, что действительно
+  // применится к этому сценарию, а не к предыдущему.
+  useEffect(() => {
+    setMode(loadMode(base.id))
+  }, [base.id])
   const tuned = useMemo(() => applyConfig(base, cfg), [base, cfg])
   const audit = useMemo(() => auditScenario(tuned), [tuned])
 
@@ -91,14 +97,15 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
     }
   }
 
-  const field = 'w-full rounded-md border border-line bg-surface px-3 py-2 text-small outline-none focus:border-accent-line'
+  const field = 'w-full min-w-0 rounded-md border border-line bg-surface px-3 py-2.5 text-small outline-none focus:border-accent-line md:py-2'
+  const nameLooksLikePhrase = cfg.opponentName.trim().split(/\s+/).filter(Boolean).length > 3
   const blockers = audit.issues.filter((i) => i.severity === 'blocker')
   const warnings = audit.issues.filter((i) => i.severity === 'warning')
 
   return (
     <main className="min-h-dvh bg-paper">
       <header className="flex h-14 items-center gap-3 border-b border-line bg-surface px-4 lg:px-5">
-        <a href="/" aria-label="К списку сценариев" className="press shrink-0 rounded-sm p-1 text-ink2 hover:bg-line2">
+        <a href="/" aria-label="К списку сценариев" className="press tap -ml-1.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-ink2 hover:bg-line2 md:ml-0 md:h-8 md:w-8">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
         </a>
         <span className="font-semibold">Настройка симуляции</span>
@@ -112,7 +119,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
       </header>
 
       {!ready ? null : (
-        <div className="mx-auto grid max-w-[1180px] gap-8 px-5 py-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,460px)] lg:px-8">
+        <div className="mx-auto grid max-w-[1180px] grid-cols-1 gap-8 px-5 py-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,460px)] lg:px-8">
           {/* Настройки */}
           <div className="flex flex-col gap-6">
             <div>
@@ -121,7 +128,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                 Опишите ситуацию своими словами. По описанию подбирается кейс из библиотеки — тот, у которого
                 совпадают предмет торга, роли и интересы сторон.
               </p>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <label className="block">
                   <span className="lbl mb-1.5 block">Сфера</span>
                   <input className={field} value={cfg.sphere} onChange={(e) => set('sphere', e.target.value)} placeholder="Промышленность, строительство, закупки…" />
@@ -147,7 +154,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                   {manual
                     ? 'Кейс выбран вручную'
                     : !query
-                      ? 'Кейс не подобран'
+                      ? 'Кейс по умолчанию'
                       : match.confidence === 'слабое'
                         ? 'Близкого кейса не нашлось'
                         : `Подобран кейс · совпадение ${match.confidence}`}
@@ -166,7 +173,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                 <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5">
                   <button
                     onClick={() => setShowLibrary((v) => !v)}
-                    className="press text-caption font-semibold text-accent hover:underline"
+                    className="press flex min-h-11 items-center text-caption font-semibold text-accent hover:underline md:min-h-0"
                   >
                     {showLibrary ? 'Свернуть библиотеку' : 'Выбрать кейс самому'}
                   </button>
@@ -222,7 +229,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                   <button
                     key={d}
                     onClick={() => set('difficulty', d)}
-                    className={`press num h-9 flex-1 rounded-md border text-small ${
+                    className={`press num h-11 flex-1 rounded-md border text-small md:h-9 ${
                       d === cfg.difficulty ? 'border-accent bg-accent font-semibold text-white' : 'border-line bg-surface text-ink2 hover:border-accent-line'
                     }`}
                   >
@@ -253,10 +260,23 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <label className="block">
                 <span className="lbl mb-1.5 block">Имя собеседника</span>
-                <input className={field} value={cfg.opponentName} onChange={(e) => set('opponentName', e.target.value)} />
+                <input
+                  className={field}
+                  maxLength={48}
+                  value={cfg.opponentName}
+                  onChange={(e) => set('opponentName', e.target.value)}
+                />
+                {/* Поле легко перепутать с «чего добивается вторая сторона»: оба про
+                    неё. Но это имя подписывает каждую реплику и собирает инициалы,
+                    так что фраза вместо имени видна участнику весь разговор. */}
+                {nameLooksLikePhrase && (
+                  <span className="mt-1 block text-caption leading-snug text-ink3">
+                    Этим именем персонаж подписан в каждой реплике — похоже, сюда попала фраза, а не имя.
+                  </span>
+                )}
               </label>
               <label className="block">
                 <span className="lbl mb-1.5 block">Роль второй стороны</span>
@@ -268,7 +288,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
               <div className="lbl mb-2">Режим оппонента</div>
               <div className="grid gap-1.5 sm:grid-cols-2">
                 <button
-                  onClick={() => { setMode('auto'); saveMode('auto') }}
+                  onClick={() => { setMode('auto'); saveMode('auto', base.id) }}
                   className={`press rounded-md border px-3 py-2.5 text-left ${
                     mode === 'auto' ? 'border-accent bg-accent-soft' : 'border-line bg-surface hover:border-accent-line'
                   }`}
@@ -281,7 +301,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                   </div>
                 </button>
                 <button
-                  onClick={() => { setMode('offline'); saveMode('offline') }}
+                  onClick={() => { setMode('offline'); saveMode('offline', base.id) }}
                   className={`press rounded-md border px-3 py-2.5 text-left ${
                     mode === 'offline' ? 'border-accent bg-accent-soft' : 'border-line bg-surface hover:border-accent-line'
                   }`}
@@ -360,7 +380,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
 
             <div className="flex flex-wrap gap-2.5">
               <a
-                href={`/arena/${base.id}`}
+                href={`/arena/${base.id}?cfg=${encodeConfig(base, cfg, mode)}`}
                 onClick={() => saveConfig(cfg)}
                 className={`press flex h-11 flex-1 items-center justify-center rounded-md px-5 font-semibold text-white ${
                   audit.playable ? 'bg-accent hover:opacity-90' : 'pointer-events-none bg-ink3'
@@ -389,11 +409,11 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                   value={link}
                   onFocus={(e) => e.currentTarget.select()}
                   aria-label="Ссылка с настройкой"
-                  className="num h-9 min-w-0 flex-1 rounded-md border border-line bg-paper px-3 text-caption text-ink2 outline-none focus:border-accent-line"
+                  className="num h-11 min-w-0 flex-1 rounded-md border border-line bg-paper px-3 text-caption text-ink2 outline-none focus:border-accent-line md:h-9"
                 />
                 <button
                   onClick={copyLink}
-                  className={`press h-9 shrink-0 rounded-md border px-3.5 text-caption font-semibold ${
+                  className={`press h-11 shrink-0 rounded-md border px-3.5 text-caption font-semibold md:h-9 ${
                     copied
                       ? 'border-accent bg-accent-soft text-accent'
                       : 'border-line-strong bg-surface text-ink2 hover:border-accent hover:bg-accent-soft hover:text-accent'

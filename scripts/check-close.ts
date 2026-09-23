@@ -8,7 +8,7 @@
  * при уже согласованном пакете считается сделкой по нему.
  */
 import { scenarios } from '../lib/scenarios'
-import { applyTurn, createInitialState, evaluateOffer, sanitizeOffer } from '../lib/engine/state'
+import { applyTurn, createInitialState, endNow, evaluateOffer, sanitizeOffer } from '../lib/engine/state'
 import { score } from '../lib/engine/scoring'
 import { enumerateReachable } from '../lib/engine/utility'
 import type { NegotiationState } from '../lib/types'
@@ -52,6 +52,28 @@ for (const s of scenarios) {
   check(out.status === 'deal', `исчерпание раундов при согласованном пакете — сделка (${out.status})`)
   const r = score(s, out)
   check(!r.headline.includes('соглашения нет'), `разбор не называет это отсутствием соглашения: «${r.headline}»`)
+
+  // Закончить партию самому — не то же самое, что выйти из переговоров.
+  // Правило исхода то же, что при исчерпании раундов.
+  const endedAgreed = endNow(continued)
+  check(endedAgreed.status === 'deal', `закончить при согласованном пакете — сделка (${endedAgreed.status})`)
+  check(
+    !score(s, endedAgreed).headline.includes('соглашения нет'),
+    'разбор после досрочного завершения не называет сделку отсутствием соглашения',
+  )
+  const endedEmpty = endNow(createInitialState(s))
+  check(endedEmpty.status === 'timeout', `закончить без договорённости — соглашения нет (${endedEmpty.status})`)
+  check(endedEmpty.status !== 'walkaway', 'досрочное завершение не выдаётся за осознанный выход из переговоров')
+  check(endedEmpty.endedEarly === true, 'состояние помнит, что партию закончил игрок, а не таймер')
+  check(
+    !score(s, endedEmpty).headline.includes('Раунды закончились'),
+    `разбор не говорит «раунды закончились» тому, кто нажал «Закончить»: «${score(s, endedEmpty).headline}»`,
+  )
+  const ranOut = { ...createInitialState(s), status: 'timeout' as const }
+  check(
+    score(s, ranOut).headline.includes('Раунды закончились'),
+    'а исчерпанным раундам заголовок оставлен прежним',
+  )
 
   // Без согласия всё как было: исчерпание раундов — не сделка.
   let empty: NegotiationState = createInitialState(s)

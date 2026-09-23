@@ -6,6 +6,7 @@ import type { ScoreReport } from '@/lib/engine/scoring'
 import { concededAt, momentContext, type RewindCandidate } from '@/lib/engine/rewind'
 import { analyze } from '@/lib/engine/utility'
 import { decapitalize, num } from '@/lib/text'
+import { count } from '@/lib/plural'
 import { newlyMastered } from '@/lib/profile'
 import { adaptationTargets, computeAdaptation } from '@/lib/engine/adaptive'
 import { Portrait } from './Portrait'
@@ -13,20 +14,24 @@ import { ArenaMap } from './ArenaMap'
 import type { RunRecord } from '@/lib/profile'
 
 /**
- * Третий шаг называется по тому, что на нём реально показано.
+ * Четвёртый шаг называется по тому, что на нём реально показано.
  *
  * Разбор не имеет права называть ошибкой ход, который на соседнем таймлайне
  * помечен находкой. Если настоящей ошибки в партии нет, шаг показывает
  * поворотный ход и называется соответственно.
+ *
+ * Третий шаг стоит сразу за баллом не случайно: человек, увидевший число,
+ * первым делом спрашивает, кто его поставил.
  */
 const steps = (fault: boolean) => [
   'Что получилось',
   'Где вы оказались',
+  'Кто это посчитал',
   fault ? 'Где вы ошиблись' : 'Что решило исход',
   'Что было скрыто',
   'Что можно было иначе',
 ]
-const STEP_COUNT = 5
+const STEP_COUNT = 6
 
 /** Балл набирается на глазах — это итог партии, а не просто число на экране. */
 function useCountUp(value: number, duration = 900) {
@@ -47,7 +52,14 @@ function useCountUp(value: number, duration = 900) {
       if (t < 1) frame = requestAnimationFrame(tick)
     }
     frame = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(frame)
+    // Страховка: в свёрнутом или перекрытом окне кадры не приходят вовсе, и
+    // главное число партии остаётся нулём — ровно на том экране, ради которого
+    // всё и затевалось. Таймер в фоне только замедляется, поэтому итог доедет.
+    const settle = setTimeout(() => setShown(value), duration + 250)
+    return () => {
+      cancelAnimationFrame(frame)
+      clearTimeout(settle)
+    }
   }, [value, duration])
   return shown
 }
@@ -106,6 +118,61 @@ export function Debrief({
   const userTurns = state.transcript.filter((t) => t.role === 'user')
 
   /**
+   * Кто что решил в этой партии.
+   *
+   * Утверждать «считает код, а не модель» словами мало: это говорят все. Здесь
+   * показан счёт на числах сыгранной партии и построчно — какое решение стояло
+   * за каждым ходом. Формулировки выверены по движку: вердикт и баллы модель
+   * не трогает вообще, разметку актов и настроение — трогает, но в границах,
+   * и эта граница названа честно, иначе первый же внимательный человек поймает
+   * на преувеличении.
+   */
+  const opponentTurns = state.transcript.filter((t) => t.role === 'opponent')
+  const verdictTurns = userTurns.filter((t) => t.verdict)
+  const combos = scenario.issues.reduce((a, i) => a * i.options.length, 1)
+  const VERDICT_TRACE = {
+    accept: {
+      title: 'Пакет принят',
+      detail: 'Код посчитал: пакет выгоднее её запасного варианта. Модель получила решение готовым и только сформулировала согласие.',
+      tone: 'good' as const,
+    },
+    counter: {
+      title: 'Встречное предложение',
+      detail: 'Лучше её отказа, но ниже того, на что она рассчитывала. Условия встречного посчитаны кодом и переданы модели готовыми.',
+      tone: 'warn' as const,
+    },
+    reject: {
+      title: 'Пакет отклонён',
+      detail: 'Код посчитал: пакет ниже её запасного варианта. Модели осталось объяснить отказ словами.',
+      tone: 'bad' as const,
+    },
+  }
+  const decisions = userTurns.flatMap((t) => {
+    const rows: { key: string; index: number; title: string; detail: string; tone: 'good' | 'warn' | 'bad' | 'plain' }[] = []
+    if (t.verdict) rows.push({ key: `v${t.index}`, index: t.index, ...VERDICT_TRACE[t.verdict] })
+    for (const id of t.revealed) {
+      const label = scenario.hiddenInterests.find((h) => h.id === id)?.label
+      rows.push({
+        key: `r${t.index}-${id}`,
+        index: t.index,
+        title: 'Интерес раскрыт',
+        detail: `Ход подошёл под акт из списка допустимых — код открыл${label ? `: ${decapitalize(label)}` : ' интерес'}.`,
+        tone: 'good',
+      })
+    }
+    if (t.factPlayed) {
+      rows.push({
+        key: `f${t.index}`,
+        index: t.index,
+        title: 'Факт засчитан',
+        detail: 'Объективный критерий отмечен кодом и пошёл в отдельный показатель результата.',
+        tone: 'plain',
+      })
+    }
+    return rows
+  })
+
+  /**
    * Ход годится в «где вы ошиблись», только если таймлайн под заголовком не
    * помечает его находкой. Два кандидата на откат выбирают момент формулой от
    * длины партии («здесь можно было копнуть глубже») или берут последнюю
@@ -155,7 +222,7 @@ export function Debrief({
     <main className="flex h-dvh flex-col bg-paper">
       <header className="flex h-14 shrink-0 items-center gap-4 border-b border-line bg-surface px-4 lg:px-5">
         <div className="flex min-w-0 shrink-0 items-center gap-3">
-          <a href="/" aria-label="К списку сценариев" className="press shrink-0 rounded-sm p-1 text-ink2 hover:bg-line2">
+          <a href="/" aria-label="К списку сценариев" className="press tap -ml-1.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-ink2 hover:bg-line2 md:ml-0 md:h-8 md:w-8">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
           </a>
           <span className="font-semibold">Разбор</span>
@@ -181,7 +248,7 @@ export function Debrief({
               // имени скринридер читал её как безымянную.
               aria-label={`Шаг ${i + 1} из ${STEPS.length}: ${label}`}
               aria-current={current ? 'step' : undefined}
-              className={`press relative flex min-w-[124px] flex-1 items-center gap-2 px-2.5 py-2.5 text-left sm:min-w-[150px] sm:gap-2.5 sm:px-3 lg:px-4 ${
+              className={`press relative flex min-h-11 min-w-[124px] flex-1 items-center gap-2 px-2.5 py-2.5 text-left sm:min-h-0 sm:min-w-[150px] sm:gap-2.5 sm:px-3 lg:px-4 ${
                 current ? '' : 'hover:bg-line2/60'
               }`}
             >
@@ -376,10 +443,142 @@ export function Debrief({
           </div>
         )}
 
-        {/* Шаг 3 */}
+        {/* Шаг 3 — кто считал.
+            Самое своё в продукте и при этом самое незаметное: экономика сделки,
+            вердикты и баллы считаются кодом, модель играет человека. Слова об
+            этом стоят дёшево, поэтому здесь счёт по сыгранной партии и граница
+            влияния модели, названная прямо. */}
         {step === 2 && (
           <div className="rise mx-auto max-w-[1180px]">
             <div className="lbl mb-3">{STEPS[2]}</div>
+            <h1 className="max-w-[820px] text-h2 font-semibold tracking-[-0.016em] text-balance">
+              Ваш балл посчитал код, а не языковая модель
+            </h1>
+            <p className="mt-3.5 max-w-[720px] text-lead text-ink2 text-pretty">
+              Выгодность каждого пакета для второй стороны считается до того, как модель увидит
+              ваш ход. Вердикт уходит ей готовым — принять, ответить встречным или отказаться, —
+              и сказать она может только то, что уже решено. Результат нельзя выговорить, его
+              можно выторговать.
+            </p>
+
+            <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+              <div className="rounded-lg border border-accent-line bg-accent-soft p-5 sm:p-6">
+                <div className="lbl mb-4 text-accent">Что посчитал код в этой партии</div>
+                <dl className="flex flex-col gap-3.5">
+                  {[
+                    {
+                      n: verdictTurns.length,
+                      t: 'решений по вашим пакетам',
+                      d: 'Принять, ответить встречным или отказаться — каждое посчитано до обращения к модели.',
+                    },
+                    {
+                      n: userTurns.length,
+                      t: 'проверок речевого акта',
+                      d: 'Интерес открывается, только если ход действительно подходит под него. Заявку модели код сверяет со списком.',
+                    },
+                    {
+                      n: combos,
+                      t: 'комбинаций сделки перебрано',
+                      d: 'Отсюда граница возможного на карте и ваша точка на ней.',
+                    },
+                    {
+                      n: score.lines.length,
+                      t: 'показателей результата',
+                      d: `Со своими весами${score.penalties.length ? ` и ${count(score.penalties.length, ['штрафом', 'штрафами', 'штрафами'])}` : ''} — ни один не назначен на глаз.`,
+                    },
+                  ].map((r) => (
+                    /* На узком экране колонка под число съедала ширину подписи,
+                       и каждая строка ломалась на четыре. Пояснение уходит под
+                       число во всю ширину, а колонка возвращается с 640 px. */
+                    <div
+                      key={r.t}
+                      className="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1 sm:grid-cols-[92px_minmax(0,1fr)] sm:gap-x-3.5 sm:gap-y-0.5"
+                    >
+                      <dt className="num text-h2 font-semibold leading-none text-accent">
+                        {r.n.toLocaleString('ru-RU')}
+                      </dt>
+                      <dd className="min-w-0 font-semibold">{r.t}</dd>
+                      <dd className="col-span-2 text-small leading-snug text-ink2 text-pretty sm:col-span-1 sm:col-start-2">
+                        {r.d}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+
+              <div className="flex flex-col gap-4">
+                <div className="rounded-lg border border-line bg-surface p-5 sm:p-6">
+                  <div className="lbl mb-3">Что делала модель</div>
+                  <div className="flex items-center gap-3">
+                    <Portrait name={scenario.persona.name} file={scenario.persona.portrait} size={34} />
+                    <div className="min-w-0">
+                      <div className="font-semibold">{scenario.persona.name}</div>
+                      <div className="text-caption text-ink3">{scenario.persona.role}</div>
+                    </div>
+                  </div>
+                  <p className="mt-3.5 text-small leading-relaxed text-ink2 text-pretty">
+                    {count(opponentTurns.length, ['реплика', 'реплики', 'реплик'])} в этой партии:
+                    характер, интонация, реакция на ваши слова. Ни одного балла и ни одного решения
+                    по сделке.
+                  </p>
+                </div>
+
+                {/* Граница названа прямо: преувеличение поймают быстрее, чем похвалят. */}
+                <div className="rounded-lg border border-line bg-surface p-5 sm:p-6">
+                  <div className="lbl mb-3">Где проходит граница</div>
+                  <p className="text-small leading-relaxed text-ink2 text-pretty">
+                    Модель размечает ваши реплики по типу речевого акта и может подвинуть доверие
+                    и раздражение второй стороны — не больше чем на восемь пунктов из ста за ход.
+                    Дальше её полномочия кончаются: что попадёт в соглашение, что засчитано
+                    уступкой и сколько это стоит, решает код.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <section className="mt-9">
+              <div className="lbl mb-2.5 border-b border-line pb-2">Решения этой партии, по ходам</div>
+              {decisions.length === 0 ? (
+                <p className="py-3 text-small leading-relaxed text-ink2 text-pretty">
+                  Вы не отправили ни одного пакета и не открыли ни одного интереса, поэтому считать
+                  было нечего: код только размечал реплики и вёл настроение второй стороны.
+                </p>
+              ) : (
+                <ol className="flex flex-col">
+                  {decisions.map((d) => (
+                    <li
+                      key={d.key}
+                      className="grid grid-cols-[minmax(0,1fr)] gap-y-1 border-b border-line2 py-3 last:border-0 sm:grid-cols-[76px_minmax(0,190px)_minmax(0,1fr)] sm:items-baseline sm:gap-x-4"
+                    >
+                      <span className="num text-caption text-ink3">раунд {Math.floor(d.index / 2) + 1}</span>
+                      <span
+                        className={`font-semibold ${
+                          d.tone === 'bad' ? 'text-danger' : d.tone === 'good' ? 'text-accent' : ''
+                        }`}
+                      >
+                        {d.title}
+                      </span>
+                      <span className="text-small leading-snug text-ink2 text-pretty">{d.detail}</span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </section>
+
+            <button
+              onClick={() => setStep(3)}
+              className="press mt-7 flex h-11 items-center gap-2 rounded-md bg-accent px-5 font-semibold text-white hover:bg-accent/92"
+            >
+              {STEPS[3]}
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+            </button>
+          </div>
+        )}
+
+        {/* Шаг 4 */}
+        {step === 3 && (
+          <div className="rise mx-auto max-w-[1180px]">
+            <div className="lbl mb-3">{STEPS[3]}</div>
             <h1 className="max-w-[760px] text-h2 font-semibold tracking-[-0.016em] text-balance">
               {!moment?.turn
                 ? 'Переговоры прошли без резких поворотов'
@@ -477,7 +676,7 @@ export function Debrief({
             )}
 
             <button
-              onClick={() => setStep(3)}
+              onClick={() => setStep(4)}
               className="press mt-7 flex h-11 items-center gap-2 rounded-md bg-accent px-5 font-semibold text-white hover:bg-accent/92"
             >
               Что было скрыто
@@ -486,8 +685,8 @@ export function Debrief({
           </div>
         )}
 
-        {/* Шаг 4 */}
-        {step === 3 && (
+        {/* Шаг 5 */}
+        {step === 4 && (
           <div className="rise mx-auto grid max-w-[1180px] grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-11 xl:grid-cols-[minmax(0,1fr)_456px]">
             <div className="min-w-0">
               <div className="lbl mb-3">Что было скрыто</div>
@@ -551,7 +750,7 @@ export function Debrief({
               </div>
 
               <button
-                onClick={() => setStep(4)}
+                onClick={() => setStep(5)}
                 className="press mt-7 flex h-11 items-center gap-2 rounded-md bg-accent px-5 font-semibold text-white hover:bg-accent/92"
               >
                 Что можно было иначе
@@ -604,8 +803,8 @@ export function Debrief({
           </div>
         )}
 
-        {/* Шаг 5 */}
-        {step === 4 && (
+        {/* Шаг 6 */}
+        {step === 5 && (
           <div className="rise mx-auto max-w-[1180px]">
             <div className="max-w-[860px]">
               <div className="lbl mb-3">Что можно было иначе</div>
@@ -613,8 +812,8 @@ export function Debrief({
                 Вернитесь в один момент и скажите иначе
               </h1>
               <p className="mt-2.5 max-w-[680px] text-body leading-relaxed text-ink2 text-pretty">
-                {scenario.persona.name.split(' ')[0]}, раскрытые интересы и всё состояние переговоров
-                восстановятся на этот раунд. Изменится только то, что вы скажете дальше.
+                Весь стол вернётся к этому раунду: настроение второй стороны, раскрытые интересы,
+                условия в соглашении. Изменится только то, что вы скажете дальше.
               </p>
             </div>
 
@@ -658,7 +857,7 @@ export function Debrief({
                 <button
                   onClick={() => setAllRounds((v) => !v)}
                   aria-expanded={allRounds}
-                  className="press flex items-center gap-2 rounded-sm text-small font-semibold text-accent"
+                  className="press flex min-h-11 items-center gap-2 rounded-md text-small font-semibold text-accent md:min-h-0 md:rounded-sm"
                 >
                   Вернуть другой раунд
                   <svg

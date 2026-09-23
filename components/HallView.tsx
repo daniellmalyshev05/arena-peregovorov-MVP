@@ -72,8 +72,17 @@ export function HallView({ scenarios }: { scenarios: Scenario[] }) {
           <Mark size={24} animate />
           <span className="text-lead font-semibold tracking-[0.01em]">Арена</span>
           <a
+            href="/how"
+            className="press ml-auto flex min-h-11 items-center gap-1.5 rounded-md px-2 text-small text-ink3 hover:bg-line2 hover:text-ink2 md:min-h-0 md:py-1"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <circle cx="12" cy="12" r="9" /><path d="M9.6 9.3a2.5 2.5 0 013.9-.8c1 .9.8 2.1-.2 2.8-.7.5-1.3.9-1.3 1.9" /><path d="M12 17h.01" />
+            </svg>
+            Как это устроено
+          </a>
+          <a
             href="/admin"
-            className="press ml-auto flex items-center gap-1.5 rounded-sm px-2 py-1 text-small text-ink3 hover:bg-line2 hover:text-ink2"
+            className="press flex min-h-11 items-center gap-1.5 rounded-md px-2 text-small text-ink3 hover:bg-line2 hover:text-ink2 md:min-h-0 md:py-1"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
               <path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" />
@@ -108,6 +117,18 @@ export function HallView({ scenarios }: { scenarios: Scenario[] }) {
           </span>
         </div>
 
+        {/* Первый ход за нас: тренажёр открывают по ссылке, без объяснений и без
+            чужой подсказки рядом. Человеку нужно знать ровно три вещи — что
+            делать сейчас, сколько это займёт и чем закончится. Тем, кто уже
+            играл, строка не показывается: им она ничего не добавляет. */}
+        {scored.length === 0 && (
+          <p className="rise mt-4 max-w-[580px] text-small leading-relaxed text-ink2 text-pretty">
+            Если вы здесь впервые — нажмите кнопку выше, настраивать ничего не нужно. Партия занимает
+            пять-десять минут и заканчивается разбором: где вы отдали лишнее и что можно было сказать
+            иначе.
+          </p>
+        )}
+
         {/* Три шага — весь онбординг: жюри проходит продукт само, до демонстрации. */}
         <ul className="mt-9 grid grid-cols-1 gap-x-8 gap-y-5 border-t border-line pt-7 sm:grid-cols-3">
           {STEPS.map((s, i) => (
@@ -122,6 +143,29 @@ export function HallView({ scenarios }: { scenarios: Scenario[] }) {
             </li>
           ))}
         </ul>
+
+        {/* Главное отличие продукта — и самое незаметное, если о нём не сказать.
+            Тренажёр на языковой модели, которая сама же и оценивает, собирается
+            за вечер; здесь модель играет человека, а исход считает код. Строка
+            стоит на первом экране, потому что справку открывают не все. */}
+        <div className="rise mt-9 rounded-lg border border-accent-line bg-accent-soft px-5 py-4 sm:px-6 sm:py-5">
+          <p className="text-lead font-semibold text-balance">
+            Исход переговоров считает код, а не языковая модель
+          </p>
+          <p className="mt-2 max-w-[640px] text-small leading-relaxed text-ink2 text-pretty">
+            У каждого условия свой вес, у обеих сторон — свой запасной вариант. Выгодность вашего
+            пакета для второй стороны считается до того, как модель увидит ход: она получает
+            решение готовым и может только сказать его словами. Модель играет человека напротив —
+            характер, интонацию, реакцию. Баллов она не ставит.
+          </p>
+          <a
+            href="/how"
+            className="press mt-2 inline-flex min-h-11 items-center gap-1.5 text-small font-semibold text-accent hover:underline md:mt-3 md:min-h-0"
+          >
+            Как считается результат
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+          </a>
+        </div>
 
         {scored.length > 0 && (
           <a

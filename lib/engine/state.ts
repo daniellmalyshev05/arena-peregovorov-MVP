@@ -400,6 +400,24 @@ export function grantLeaked(
   return { granted, ...hintFor(scenario, state, granted[0]) }
 }
 
+/**
+ * Игрок закончил партию сам, не выходя из переговоров.
+ *
+ * Выход из переговоров — переговорный приём: он означает «мне выгоднее мой
+ * запасной вариант». Но единственная кнопка выхода читалась как «сдаюсь», и у
+ * человека, которому просто хватит, не было способа дойти до разбора — он
+ * закрывал вкладку, так и не увидев результата.
+ *
+ * Правило исхода то же, что при исчерпании раундов: есть согласованный пакет —
+ * это сделка по нему, нет — соглашения нет и итогом остаётся запасной вариант.
+ */
+export function endNow(state: NegotiationState): NegotiationState {
+  const next = clone(state)
+  next.status = next.agreedAtRound ? 'deal' : 'timeout'
+  if (next.status === 'timeout') next.endedEarly = true
+  return next
+}
+
 export function walkAway(state: NegotiationState): NegotiationState {
   const next = clone(state)
   next.status = 'walkaway'
@@ -407,11 +425,23 @@ export function walkAway(state: NegotiationState): NegotiationState {
 }
 
 /** Сделка считается собранной, когда все открытые условия сдвинуты со статус-кво. */
-function allIssuesSettled(scenario: Scenario, state: NegotiationState): boolean {
+/**
+ * Насколько стол закрыт договорённостью.
+ *
+ * Считается отдельно, потому что это нужно не только движку: игрок, чьё
+ * предложение только что приняли, обязан видеть, сколько условий отделяет его
+ * от закрытия сделки. Раньше эта арифметика жила внутри одной булевой функции,
+ * и вторая сторона говорила «передаём юристам», а на экране не менялось ничего.
+ */
+export function settlement(scenario: Scenario, state: NegotiationState) {
   const visible = scenario.issues.filter((i) => state.visibleIssues.includes(i.id))
-  if (visible.length < 3) return false
-  const moved = visible.filter((i) => state.deal[i.id] !== i.defaultOptionId)
-  return moved.length >= Math.ceil(visible.length * 0.6)
+  const moved = visible.filter((i) => state.deal[i.id] !== i.defaultOptionId).length
+  const needed = visible.length < 3 ? Infinity : Math.ceil(visible.length * 0.6)
+  return { visible: visible.length, moved, needed, settled: moved >= needed }
+}
+
+function allIssuesSettled(scenario: Scenario, state: NegotiationState): boolean {
+  return settlement(scenario, state).settled
 }
 
 /** Развилка: откат к состоянию перед выбранным ходом. */

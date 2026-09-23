@@ -31,7 +31,7 @@ export function ArenaEntry({ base }: { base: Scenario }) {
     const fromLink = code ? decodeConfig([base], code) : null
     if (fromLink) {
       saveConfig(fromLink.cfg)
-      saveMode(fromLink.mode)
+      saveMode(fromLink.mode, base.id)
       setResolved({
         scenario: applyConfig(base, fromLink.cfg),
         configured: true,

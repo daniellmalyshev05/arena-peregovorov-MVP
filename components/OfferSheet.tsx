@@ -143,7 +143,7 @@ export function OfferSheet({
             <button
               onClick={onClose}
               aria-label="Закрыть"
-              className="press ml-auto rounded-sm p-1 text-ink2 hover:bg-line2"
+              className="press tap -mr-1.5 ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-ink2 hover:bg-line2 md:mr-0 md:h-8 md:w-8"
             >
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M18 6L6 18M6 6l12 12" />

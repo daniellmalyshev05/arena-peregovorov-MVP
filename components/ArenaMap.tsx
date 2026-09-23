@@ -240,7 +240,7 @@ function TableToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
     <div className="mb-2 flex justify-end">
       <button
         onClick={onToggle}
-        className="press flex h-7 items-center rounded-sm px-2 text-caption text-ink3 underline decoration-line-strong underline-offset-4 hover:bg-line2 hover:text-ink"
+        className="press flex h-11 items-center rounded-md px-2 text-caption text-ink3 underline decoration-line-strong underline-offset-4 hover:bg-line2 hover:text-ink md:h-7 md:rounded-sm"
       >
         {on ? 'Показать картой' : 'Показать числами'}
       </button>

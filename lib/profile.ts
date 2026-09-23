@@ -212,7 +212,7 @@ export function patterns(runs: RunRecord[]): Pattern[] {
  * подтвердился в двух зачётных сессиях, и опирается ровно на те же числа,
  * которыми считается разбор.
  */
-export type SkillStatus = 'untested' | 'learning' | 'mastered'
+export type SkillStatus = 'untested' | 'seen' | 'learning' | 'mastered'
 
 export interface Skill {
   id: string
@@ -232,10 +232,21 @@ export function skills(runs: RunRecord[]): Skill[] {
     title: string,
     pool: RunRecord[],
     ok: (r: RunRecord) => boolean,
-    text: { untested: string; learning: (hits: number, n: number) => string; mastered: (hits: number) => string },
+    text: {
+      untested: string
+      /** Что показала единственная сессия. Порог не двигает — но и молчать нечестно. */
+      single: (ok: boolean) => string
+      learning: (hits: number, n: number) => string
+      mastered: (hits: number) => string
+    },
   ): Skill => {
     const hits = pool.filter(ok).length
-    if (pool.length < CONFIRMATIONS) return { id, title, status: 'untested', detail: text.untested }
+    if (!pool.length) return { id, title, status: 'untested', detail: text.untested }
+    // Одна сессия навык не закрывает — порог остаётся прежним и это правильно.
+    // Но выводить пять одинаковых «не проверялся» тому, кто только что сыграл,
+    // значит прятать от него собственный результат: человек видит заглушку там,
+    // где для него уже посчитано всё, кроме повторяемости.
+    if (pool.length < CONFIRMATIONS) return { id, title, status: 'seen', detail: text.single(hits > 0) }
     if (hits >= CONFIRMATIONS) return { id, title, status: 'mastered', detail: text.mastered(hits) }
     return { id, title, status: 'learning', detail: text.learning(hits, pool.length) }
   }
@@ -250,6 +261,9 @@ export function skills(runs: RunRecord[]): Skill[] {
       (r) => r.interests > 0 && r.revealed / r.interests >= 0.75,
       {
         untested: 'Нужны две зачётные сессии, чтобы отличить навык от удачного разговора.',
+        single: (ok) => ok
+          ? 'В этой сессии вы дошли до трёх четвертей интересов. Ещё одна такая — навык зачтён.'
+          : 'В этой сессии до трёх четвертей интересов второй стороны вы не дошли.',
         learning: (hits, n) => `Вы дошли до трёх четвертей интересов второй стороны в ${hits} из ${n}.`,
         mastered: (hits) => `Вы доходите до интересов второй стороны: подтверждено в ${sessions(hits)}.`,
       },
@@ -261,6 +275,9 @@ export function skills(runs: RunRecord[]): Skill[] {
       (r) => r.conditional > 0 && r.unilateral === 0,
       {
         untested: 'Нужны две зачётные сессии с отправленным пакетом.',
+        single: (ok) => ok
+          ? 'В этой сессии обмен шёл без уступок даром. Ещё одна такая — навык зачтён.'
+          : 'В этой сессии обмена без уступок даром не получилось.',
         learning: (hits, n) => `Обмен без уступок «просто так» получился в ${hits} из ${n}.`,
         mastered: (hits) => `Вы просите встречное условие и не отдаёте даром: подтверждено в ${sessions(hits)}.`,
       },
@@ -272,6 +289,9 @@ export function skills(runs: RunRecord[]): Skill[] {
       (r) => r.facts >= 2,
       {
         untested: 'Нужны две зачётные сессии, чтобы увидеть привычку опираться на факты.',
+        single: (ok) => ok
+          ? 'В этой сессии вы опёрлись на два факта и больше. Ещё одна такая — навык зачтён.'
+          : 'В этой сессии фактов в разговоре было меньше двух.',
         learning: (hits, n) => `Два и больше фактов в разговоре — в ${hits} из ${n}.`,
         mastered: (hits) => `Вы спорите документом, а не настойчивостью: подтверждено в ${sessions(hits)}.`,
       },
@@ -283,6 +303,9 @@ export function skills(runs: RunRecord[]): Skill[] {
       (r) => (r.brier ?? 1) <= 0.2,
       {
         untested: 'Оцените утверждения в досье хотя бы в двух сессиях.',
+        single: (ok) => ok
+          ? 'В этой сессии ваши оценки в досье оказались точными. Ещё одна такая — навык зачтён.'
+          : 'В этой сессии оценки в досье разошлись с тем, что оказалось правдой.',
         learning: (hits, n) => `Точная модель второй стороны получилась в ${hits} из ${n}.`,
         mastered: (hits) => `Вы понимаете вторую сторону точно и без самоуверенности: подтверждено в ${sessions(hits)}.`,
       },
@@ -294,6 +317,9 @@ export function skills(runs: RunRecord[]): Skill[] {
       (r) => !r.belowBatna,
       {
         untested: 'Нужны две зачётные сессии, доведённые до исхода.',
+        single: (ok) => ok
+          ? 'В этой сессии сделка была не хуже вашего запасного варианта. Ещё одна такая — навык зачтён.'
+          : 'В этой сессии сделка вышла хуже вашего запасного варианта.',
         learning: (hits, n) => `Сделка была не хуже вашего запасного варианта в ${hits} из ${n}.`,
         mastered: (hits) => `Вы не соглашаетесь на то, что хуже отказа: подтверждено в ${sessions(hits)}.`,
       },
