@@ -374,11 +374,18 @@ export function applyTurn(input: ApplyTurnInput): ApplyTurnResult {
  * досье и оно ещё не оценено — само утверждение: оценка ставится тут же.
  * Текст обязан быть текстом утверждения, а не вопроса-подсказки: часть
  * утверждений — ловушки, сформулированные наоборот, и «Похоже» на вопрос
- * записалось бы как «Похоже» на противоположное.
+ * записалось бы как «Похоже» на противоположное. Сами ловушки здесь не
+ * показываются — только в досье.
  */
 function hintFor(scenario: Scenario, state: NegotiationState, interestId?: string) {
   const interest = interestId ? scenario.hiddenInterests.find((h) => h.id === interestId) : undefined
   if (!interest) return { hint: undefined, hintProbe: undefined }
+  // Ловушку в момент раскрытия не показываем. Раскрытие её опровергает только
+  // в тексте кейса, а живая модель пересказывает его по-своему: «проект не
+  // пропустят, независимо от остальных плюсов» — и «цена земли — главный
+  // критерий» читается как правда. Ловушки оцениваются в досье, осознанно.
+  const linked = interest.probe ? scenario.beliefProbes.find((p) => p.id === interest.probe) : undefined
+  if (linked && !linked.truth) return { hint: undefined, hintProbe: undefined }
   const probe = interest.probe
     ? scenario.beliefProbes.find((p) => p.id === interest.probe && !state.hypotheses.some((h) => h.id === p.id))
     : undefined

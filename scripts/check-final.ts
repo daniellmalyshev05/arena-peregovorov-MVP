@@ -6,7 +6,7 @@
  *   2. имя другого пола из админки давало «Игорь настроена партнёрски»;
  *   3. «снизить ставку хранения» подбиралось в кейс про повышение тарифа;
  *   4. выпад в адрес человека разбор называл «можно было копнуть глубже»;
- *   5. блеф получал метку «BATNA · опора на запасной вариант»;
+ *   5. блеф получал метку «BATNA · опора на запасной вариант» и шёл в «копнуть глубже»;
  *   6. один условный обмен за две партии давал «почти всегда просите взамен»;
  *   7. выход без разведки стоил меньше, чем уход от сделки на столе.
  */
@@ -36,8 +36,13 @@ console.log('1. Ловушка не подтверждается тем, что 
   const s = getScenario('resident-attraction')!
   const interest = s.hiddenInterests.find((h) => h.id === 'landForBoard')!
   const probe = s.beliefProbes.find((p) => p.id === interest.probe)!
-  check(!probe.truth, `к «${interest.id}» привязана ловушка — оценка ставится в момент раскрытия`)
+  check(!probe.truth, `к «${interest.id}» привязана ловушка`)
   check(!/совет/i.test(probe.text), `ловушка не повторяет слова раскрытия про совет: «${probe.text}»`)
+  const r = applyTurn({
+    scenario: s, state: createInitialState(s), userText: 'Как вы выбираете площадку?',
+    llm: { reply: 'Если цифра выбивается из рынка, проект не пропустят, независимо от остальных плюсов.', detectedActs: ['spin_situation'], revealedInterests: [interest.id] },
+  })
+  check(!r.hint, 'в момент раскрытия ловушка не показывается — только в досье')
 }
 
 console.log('\n2. Имя другого пола не ломает тексты\n')
@@ -81,6 +86,14 @@ console.log('\n4. Выпад в адрес человека — отдельны
   const at = c.find((x) => x.turnIndex === insult.index)
   check(at?.kind === 'personal_attack', `ход с выпадом: ${at?.title ?? 'не выбран'}`)
   check(!c.some((x) => x.kind === 'missed_interest' && x.turnIndex === insult.index), '«копнуть глубже» не стоит на выпаде')
+  let sb = createInitialState(s)
+  sb = say(s, sb, 'У нас очередь из трёх сетей крупнее вашей. Скидки не будет — соглашайтесь или уходите.')
+  const bl = sb.transcript.find((t) => t.role === 'user')!
+  if (!bl.acts.includes('bluff')) bl.acts = [...bl.acts, 'bluff']
+  sb = walkAway(sb)
+  const cb = rewindCandidates(s, sb)
+  check(cb.find((x) => x.turnIndex === bl.index)?.kind === 'bluff', 'блеф — отдельный момент «Здесь вы блефовали»')
+  check(!cb.some((x) => x.kind === 'missed_interest' && x.turnIndex === bl.index), '«копнуть глубже» не стоит на блефе')
   const missed = c.find((x) => x.kind === 'missed_interest')
   check(!missed || !missed.why.startsWith('Один из'), `число ненайденных интересов названо верно${missed ? `: «${missed.why}»` : ''}`)
 }

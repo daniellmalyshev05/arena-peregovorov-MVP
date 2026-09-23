@@ -28,7 +28,16 @@ for (const s of scenarios) {
   const ids = linked.map((h) => h.probe)
   check(new Set(ids).size === ids.length, `${s.title}: утверждения не повторяются`)
 
-  const h = s.hiddenInterests[0]
+  // Карточка в момент раскрытия — только для верного утверждения; ловушки живут в досье.
+  const h = s.hiddenInterests.find((x) => s.beliefProbes.find((p) => p.id === x.probe)?.truth)!
+  const trap = s.hiddenInterests.find((x) => s.beliefProbes.find((p) => p.id === x.probe)?.truth === false)
+  if (trap) {
+    const t = applyTurn({
+      scenario: s, state: createInitialState(s), userText: 'Вопрос.',
+      llm: { reply: 'Ответ.', detectedActs: [trap.unlockedBy[0]], revealedInterests: [trap.id] },
+    })
+    check(!t.hint && !t.hintProbe && t.state.revealedInterests.includes(trap.id), `${s.title}: ловушка в момент раскрытия не показывается, интерес раскрыт`)
+  }
   const st = createInitialState(s)
   const r = applyTurn({
     scenario: s, state: st, userText: 'Вопрос.',

@@ -21,6 +21,7 @@ export interface RewindCandidate {
   kind:
     | 'unilateral'
     | 'personal_attack'
+    | 'bluff'
     | 'early_offer'
     | 'weak_package'
     | 'missed_interest'
@@ -62,6 +63,18 @@ export function rewindCandidates(scenario: Scenario, state: NegotiationState): R
       kind: 'personal_attack',
       title: 'Здесь разговор перешёл на личность',
       why: 'Выпад в адрес человека стоил доверия и ничего не дал по существу. Скажите то же самое о проблеме, а не о собеседнике.',
+    })
+  }
+
+  // 1в. Блеф. Иначе он попадал в «здесь можно было копнуть глубже», а в разборе
+  // не упоминался вовсе, хотя метка под репликой уже назвала его ошибкой.
+  const bluff = userTurns.find((t) => t.acts.includes('bluff') && !taken(t.index))
+  if (bluff) {
+    out.push({
+      turnIndex: bluff.index,
+      kind: 'bluff',
+      title: 'Здесь вы блефовали',
+      why: 'Вы опёрлись на альтернативу, которой нет. Выдуманного запасного варианта вторая сторона не боится — сошлитесь на настоящий или на факт из досье.',
     })
   }
 
@@ -127,6 +140,7 @@ export function rewindCandidates(scenario: Scenario, state: NegotiationState): R
         !t.verdict &&
         !t.dealChanges.length &&
         !t.acts.includes('personal_attack') &&
+        !t.acts.includes('bluff') &&
         !taken(t.index),
     )
     const moment = quiet[Math.floor((quiet.length - 1) / 2)]
