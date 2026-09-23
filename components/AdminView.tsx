@@ -14,10 +14,8 @@ import { ScenarioMap } from './ScenarioMap'
 /**
  * Контур администратора (ТЗ §2.2, §2.3).
  *
- * Отличие от обычной формы с полями: каждая настройка тут же проверяется
- * движком. Администратор не просто задаёт контекст — он видит доказательство,
- * что в получившемся кейсе есть чему учиться. Считается перебором всех
- * достижимых соглашений, детерминированно, без обращений к сети.
+ * Каждая настройка сразу проверяется движком: аудит перебирает все достижимые
+ * соглашения и показывает, остался ли кейс играбельным. Без обращений к сети.
  */
 export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
   const linkField = useRef<HTMLInputElement>(null)
@@ -27,7 +25,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
   const [mode, setMode] = useState<OpponentMode>('auto')
   const [origin, setOrigin] = useState('')
   const [copied, setCopied] = useState(false)
-  // Администратор выбрал кейс сам — подбор больше не переключает его под руками.
+  // Администратор выбрал кейс сам — подбор его не переключает.
   const [manual, setManual] = useState(false)
   const [showLibrary, setShowLibrary] = useState(false)
 
@@ -44,9 +42,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
 
   const base = scenarios.find((s) => s.id === cfg.baseScenarioId) ?? scenarios[0]
 
-  // Режим хранится при кейсе, а не при браузере, поэтому читается заново на
-  // каждой смене кейса: переключатель показывает то, что действительно
-  // применится к этому сценарию, а не к предыдущему.
+  // Режим хранится при кейсе, поэтому перечитывается при смене кейса.
   useEffect(() => {
     setMode(loadMode(base.id))
   }, [base.id])
@@ -148,8 +144,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                 <textarea className={field} rows={2} value={cfg.opponentGoal} onChange={(e) => set('opponentGoal', e.target.value)} placeholder="Например: поднять тариф на 15% и не обсуждать объёмы" />
               </label>
 
-              {/* Результат подбора. Администратор видит не только какой кейс выбран,
-                  но и по каким словам — иначе выбор выглядит как случайность. */}
+              {/* Результат подбора: какой кейс выбран и по каким словам. */}
               <div
                 className={`mt-4 rounded-md border px-4 py-3.5 ${
                   !manual && match.confidence === 'слабое' ? 'border-line bg-rail' : 'border-accent-line bg-accent-soft'
@@ -238,7 +233,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
             <div className="border-t border-line pt-6">
               <div className="lbl mb-1">Настройка подобранного кейса</div>
               <p className="text-caption leading-snug text-ink3">
-                Эти ручки меняют математику симуляции, а не подписи: последствия каждой видно справа.
+                Эти настройки меняют расчёт симуляции. Что изменилось, видно справа.
               </p>
             </div>
 
@@ -291,11 +286,8 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                   value={cfg.opponentName}
                   onChange={(e) => set('opponentName', e.target.value)}
                 />
-                {/* Поле легко перепутать с «чего добивается вторая сторона»: оба про
-                    неё. Но это имя подписывает каждую реплику и собирает инициалы,
-                    так что фраза вместо имени видна участнику весь разговор. */}
-                {/* Имя подставляется во все тексты кейса, а местоимения в них — нет,
-                    поэтому имя другого пола не применяется (см. nameFitsPersona). */}
+                {/* Имя подписывает каждую реплику, поэтому фразу вместо имени ловим сразу.
+                    Имя другого пола не применяется: см. nameFitsPersona. */}
                 {!nameLooksLikePhrase && genderMismatch && (
                   <span className="mt-1 block text-caption leading-snug text-danger">
                     Тексты этого кейса написаны {baseFemale ? 'о женщине' : 'о мужчине'}, поэтому имя «{newFirst}» не подставится — участник увидит «{base.persona.name}». Введите {baseFemale ? 'женское' : 'мужское'} имя.

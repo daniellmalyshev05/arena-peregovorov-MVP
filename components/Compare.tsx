@@ -6,13 +6,9 @@ import { analyze, optionOf, utility } from '@/lib/engine/utility'
 import { signed } from '@/lib/text'
 
 /**
- * Развилка: две реальности рядом.
+ * Развилка: две версии партии рядом.
  *
- * Пометка «тренировочная сессия» намеренная: результат после отката
- * не идёт в зачёт, иначе профиль переговорщика теряет смысл.
- *
- * Зелёным подсвечена та ветка, которая действительно вышла лучше, —
- * если переигрывание оказалось хуже, акцент остаётся у первой попытки.
+ * Результат после отката помечен тренировочным и не идёт в профиль.
  */
 export function Compare({
   scenario,
@@ -29,8 +25,6 @@ export function Compare({
 }) {
   const batna = scenario.userBatna.value
   // Без соглашения итог — запасной вариант, а не статус-кво условий на столе.
-  // Раньше версия с выходом из переговоров показывала выигрыш по условиям,
-  // которые никто не подписывал.
   const agreed = (s: NegotiationState) => s.status === 'deal' || s.status === 'active'
   const pct = (s: NegotiationState) =>
     agreed(s) ? Math.round(((utility(scenario, s.deal, 'user') - batna) / batna) * 100) : 0

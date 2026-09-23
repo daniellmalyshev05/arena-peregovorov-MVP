@@ -20,11 +20,8 @@ import { count } from '@/lib/plural'
 import { actTags } from '@/lib/techniques'
 
 /**
- * Тур по столу переговоров.
- *
- * Три подсказки вместо модального онбординга: они не закрывают экран, их
- * можно пропустить одной кнопкой и вернуть кнопкой «?». Тексты написаны так,
- * чтобы работать и на узком экране, где боковые зоны открываются кнопками.
+ * Тур по столу переговоров: три подсказки вместо модального онбординга.
+ * Пропускаются одной кнопкой, возвращаются кнопкой «?».
  */
 const TOUR = [
   {
@@ -46,8 +43,7 @@ const TOUR = [
 
 /**
  * Правило, по которому код принял решение по пакету. Без чисел: выигрыш второй
- * стороны в игре намеренно скрыт, иначе пакет подбирался бы перебором. Числа
- * этой партии — в разборе, на шаге «Кто это посчитал».
+ * стороны скрыт, иначе пакет подбирался бы перебором. Числа — в разборе.
  */
 const VERDICT_RULE: Record<'accept' | 'counter' | 'reject', string> = {
   accept: 'пакет не хуже её ожиданий → согласие',
@@ -79,7 +75,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
   // Снапшот состояния ПЕРЕД каждым ходом игрока — на них держится развилка.
   const [snapshots, setSnapshots] = useState<{ turnIndex: number; state: NegotiationState }[]>([])
   // Снапшоты зачётной сессии отдельно: после возврата в ленте копятся снапшоты
-  // второй версии, и «Переиграть другой момент» раньше мог восстановить мир из неё.
+  // второй версии, а «Переиграть другой момент» должен брать мир из первой.
   const [baselineSnaps, setBaselineSnaps] = useState<{ turnIndex: number; state: NegotiationState }[]>([])
   const snapsRef = useRef(snapshots)
   useEffect(() => {
@@ -116,7 +112,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
   const [panel, setPanel] = useState<'brief' | 'deal' | null>(null)
   // Переговоры закончились: экран уходит, разбор въезжает.
   const [closing, setClosing] = useState(false)
-  // Партия поднята из хранилища после перезагрузки — об этом честно говорим в ленте.
+  // Партия поднята из хранилища после перезагрузки — об этом говорим в ленте.
   const [restored, setRestored] = useState(false)
   // Короткий тур по столу: три подсказки при первом входе, дальше по кнопке «?».
   const [tour, setTour] = useState<number | null>(null)
@@ -149,9 +145,8 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
     return rows.length ? { deal: counter, rows } : null
   }, [lastOffer, scenario.issues, state.deal, state.standingCounter, state.status, state.transcript])
 
-  // Условия, названные словами без пакета. В соглашение они не попадают, и
-  // без этой карточки человек слышит «интересно» и считает, что договорился.
-  // Уровни сопоставила модель, проверил движок — пакет открывается уже собранным.
+  // Условия, названные словами без пакета, в соглашение не попадают. Карточка
+  // предлагает собрать их пакетом: уровни сопоставила модель, проверил движок.
   const spokenView = useMemo(() => {
     const said = state.transcript[state.transcript.length - 2]
     if (state.status !== 'active' || said?.role !== 'user' || said.verdict) return null
@@ -177,11 +172,9 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
   useEffect(() => {
     setHistory(loadRuns())
     setMode(loadMode(scenario.id))
-    // Жюри открывает тренажёр раньше, чем видит демонстрацию: первый вход
-    // объясняет три зоны стола. Второй раз тур сам не появляется.
+    // Тур сам показывается только при первом входе.
     if (!tourSeen()) setTour(0)
-    // Незаконченная партия переживает перезагрузку страницы: на демо это
-    // разница между «продолжаем» и «начинаем сначала при жюри».
+    // Незаконченная партия переживает перезагрузку страницы.
     const saved = loadSession(signature)
     if (saved) {
       setState(saved.state)
@@ -245,10 +238,8 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
       const before = { ...state.deal }
       const visibleBefore = [...state.visibleIssues]
       setSnapshots((prev) => [...prev, { turnIndex: state.transcript.length, state }])
-      // Запасной движок считается на сервере и наружу не ходит, поэтому у
-      // сорвавшегося хода есть второй шанс: провайдер мог не ответить в срок,
-      // а функция — упасть по таймауту. Раньше в этом месте ход просто
-      // терялся, и человек видел «отправьте реплику ещё раз».
+      // Если ход сорвался (провайдер не ответил, функция упала по таймауту),
+      // он повторяется запасным движком: тот работает на сервере без сети.
       const post = (forceOffline: boolean) =>
         fetch('/api/turn', {
           method: 'POST',
@@ -281,18 +272,11 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
         setState(data.state)
         setPending(null)
         setOffline(data.source === 'offline')
-        if (data.fallbackReason) {
-          console.warn('[арена] ответ пришёл от офлайн-движка:', data.fallbackReason)
-        }
         setPendingFact(undefined)
-        // Сделку закрывает игрок, а не первый принятый пакет. Пока раунды не
-        // кончились, после согласия предлагается выбор: зафиксировать или
-        // продолжить обсуждение — остальные условия ещё на столе.
+        // Сделку закрывает игрок, а не первый принятый пакет: пока раунды не
+        // кончились, после согласия он выбирает — зафиксировать или продолжить.
+        // Выбор показывается и тогда, когда стол закрыт не полностью.
         const outOfRounds = data.state.round > scenario.maxRounds
-        // Пакет приняли — значит игрок это видит, даже если стол закрыт не
-        // настолько, чтобы сделка засчиталась. Раньше сюда попадал только
-        // полностью собранный стол: вторая сторона соглашалась вслух, звала
-        // юристов, а на экране не появлялось ничего.
         if ((data.state.status === 'deal' || data.verdict === 'accept') && !outOfRounds) {
           setPendingDeal(true)
         } else if (data.state.status !== 'active') {
@@ -514,9 +498,8 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
             </div>
           </div>
         ) : (
-          /* Два разных смысла, которые раньше были одной кнопкой: закончить
-             партию и осознанно отказаться от сделки. Первое — обычный конец
-             разговора и дорога к разбору, второе — переговорный ход. */
+          /* Две разные кнопки: закончить партию (путь к разбору) и выйти
+             из переговоров (переговорный ход). */
           <div className="flex flex-col gap-1.5">
             <button
               onClick={() => setConfirmEnd(true)}
@@ -548,9 +531,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
       }}
     >
       {/* Шапка */}
-      {/* Шапка на телефоне складывалась сама на себя: название не сжималось,
-          и роль, счётчик раундов и кнопки налезали друг на друга. Узкий экран
-          оставляет главное — куда вернуться, где ты и что можно сделать. */}
+      {/* На узком экране в шапке остаётся главное: назад, где ты и меню действий. */}
       <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line bg-surface px-4 md:gap-4 lg:px-5">
         <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">
           <a href="/" aria-label="К списку сценариев" className="press tap -ml-1.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-ink2 hover:bg-line2 md:ml-0 md:h-8 md:w-8">
@@ -581,10 +562,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
             <span className="hidden md:inline"> из {scenario.maxRounds}</span>
           </span>
 
-          {/* Завершить партию на телефоне было негде: обе кнопки лежали в
-              подвале панели «Цель и факты», за двумя действиями и прокруткой.
-              Дорога к разбору — к лучшему, что есть в продукте, — не должна
-              начинаться с поиска. На широком экране они остаются в рельсе. */}
+          {/* Завершение партии на телефоне — в меню шапки; на широком экране кнопки в рельсе. */}
           <div className="relative md:hidden">
             <button
               onClick={() => setMenu((m) => (m === 'closed' ? 'root' : 'closed'))}
@@ -824,7 +802,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
               <div className="rise ml-11 flex max-w-[600px] flex-wrap items-center gap-x-4 gap-y-2.5 rounded-md border border-line bg-paper px-3.5 py-2.5">
                 <span className="min-w-[180px] flex-1 text-small">
                   {hint.text}
-                  {/* Первая гипотеза: без объяснения карточку пропускают, а это 15 баллов из 100. */}
+                  {/* Пояснение к первой гипотезе: оценки дают до 15 баллов из 100. */}
                   {hint.probeId && state.hypotheses.length === 0 && (
                     <span className="mt-1 block text-caption leading-snug text-ink3">
                       Это догадка о второй стороне. Отметьте, насколько она верна: точность таких оценок даёт до 15 баллов из 100.
@@ -858,9 +836,8 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
               </div>
             )}
             {/* Согласие получено: закрыть сделку или торговаться дальше — решает игрок.
-                Пакет могут принять и тогда, когда стол закрыт не полностью. Такое
-                согласие тоже обязано быть видимым — с честным числом условий,
-                которых не хватает до сделки, и с возможностью закрыться как есть. */}
+                Если стол закрыт не полностью, показываем, сколько условий не хватает,
+                и даём закрыться как есть. */}
             {pendingDeal && !busy && (() => {
               const settle = settlement(scenario, state)
               const closable = state.status === 'deal'
@@ -998,9 +975,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
 
           {/* Ввод */}
           <div className="flex shrink-0 flex-col gap-[11px] border-t border-line2 px-6 pb-5 pt-[14px] lg:px-10">
-            {/* С чего начать. Первый ход решает, куда пойдёт разговор, а человек,
-                открывший тренажёр сам, чаще всего пишет «здравствуйте». Это приёмы,
-                а не подсказки к ответу: скрытых интересов здесь нет. */}
+            {/* Подсказки первого хода: приёмы, а не ответы — скрытых интересов не называют. */}
             {openers.length > 0 && state.round === 1 && !text && !busy && state.status === 'active' && (
               <div className="rise flex flex-wrap items-center gap-x-3 gap-y-2">
                 <span className="lbl shrink-0">С чего начать</span>
@@ -1084,8 +1059,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
         {renderDeal(`hidden md:flex ${tour === 2 ? 'outline outline-2 -outline-offset-2 outline-accent' : ''}`)}
       </div>
 
-      {/* Панель тура стоит сверху: снизу поле ввода, и подсказка не должна
-          закрывать кнопку «Отправить» — иначе она мешает ровно там, где учит. */}
+      {/* Панель тура сверху, чтобы не закрывать кнопку «Отправить». */}
       {tour !== null && (
         <div className="rise fixed inset-x-4 top-24 z-50 mx-auto max-w-[560px] rounded-lg border border-line bg-surface px-5 py-4 shadow-[0_14px_44px_rgba(26,28,25,0.16)] md:top-20">
           <div className="flex items-baseline gap-3">

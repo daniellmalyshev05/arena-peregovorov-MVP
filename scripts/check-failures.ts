@@ -49,4 +49,4 @@ if (b.r.total > 35) fails.push('за пустой разговор начисл�
 if (c.st.status !== 'walkaway') fails.push('выход из переговоров не зафиксирован')
 if (c.r.headline.toLowerCase().includes('сделка состоялась')) fails.push('выход назван состоявшейся сделкой')
 if (fails.length) { console.error('ОШИБКИ:\n  ' + fails.join('\n  ')); process.exit(1) }
-console.log('✓ провальные исходы больше не выглядят как успех')
+console.log('✓ провальные исходы не выглядят как успех')

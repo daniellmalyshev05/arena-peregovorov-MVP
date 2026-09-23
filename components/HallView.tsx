@@ -10,11 +10,8 @@ import { Mark } from './Mark'
 import { Portrait } from './Portrait'
 
 /**
- * Как это работает — тремя шагами на первом экране.
- *
- * Жюри открывает ссылку раньше, чем видит демонстрацию, и должно понять
- * механику до первой реплики. Модального онбординга здесь нет сознательно:
- * его закрывают не читая, а эти три строки видны вместе с кнопкой «Начать».
+ * Как это работает — тремя шагами на первом экране, рядом с кнопкой «Начать».
+ * Вместо модального онбординга.
  */
 const STEPS = [
   {
@@ -23,7 +20,7 @@ const STEPS = [
   },
   {
     title: 'Собирайте пакет',
-    detail: 'Условия обмениваются вместе, а не по одному: видно, что вы отдаёте и что просите взамен, ещё до отправки.',
+    detail: 'Условия предлагаются пакетом. Ещё до отправки видно, что вы отдаёте и что просите взамен.',
   },
   {
     title: 'Возвращайтесь',
@@ -43,9 +40,7 @@ const SKILLS: Record<string, string> = {
 
 export function HallView({ scenarios }: { scenarios: Scenario[] }) {
   const [runs, setRuns] = useState<RunRecord[]>([])
-  // Настройка администратора живёт в браузере и применяется молча. Холл обязан
-  // о ней сказать: иначе карточка обещает библиотечный кейс, а внутри открывается
-  // настроенный — с другой сложностью, тоном и второй стороной.
+  // Если для кейса есть настройка администратора, холл помечает это на карточке.
   const [tuned, setTuned] = useState<{ id: string; difficulty: number } | null>(null)
   useEffect(() => {
     setRuns(loadRuns())
@@ -62,7 +57,7 @@ export function HallView({ scenarios }: { scenarios: Scenario[] }) {
   const suggested = scored.length ? suggestScenario(runs, scenarios) : undefined
   const passed = scenarios.filter((s) => best(s.id) !== null).length
   // Куда ведёт главная кнопка: рекомендованный кейс, иначе первый непройденный,
-  // иначе первый в библиотеке. Без этого «Начать» некуда вести на чистом профиле.
+  // иначе первый в библиотеке.
   const entry = suggested ?? scenarios.find((s) => best(s.id) === null) ?? scenarios[0]
 
   return (
@@ -101,9 +96,7 @@ export function HallView({ scenarios }: { scenarios: Scenario[] }) {
           переиграть.
         </p>
 
-        {/* Вход, а не меню: первый экран обязан давать одну очевидную кнопку.
-            Человек, открывший ссылку без объяснений, не должен выбирать из
-            семи строк, чтобы понять, что здесь происходит. */}
+        {/* Одна главная кнопка входа вместо выбора из списка кейсов. */}
         <div className="mt-7 flex flex-wrap items-center gap-x-4 gap-y-3">
           <a
             href={`/arena/${entry.id}`}
@@ -117,10 +110,7 @@ export function HallView({ scenarios }: { scenarios: Scenario[] }) {
           </span>
         </div>
 
-        {/* Первый ход за нас: тренажёр открывают по ссылке, без объяснений и без
-            чужой подсказки рядом. Человеку нужно знать ровно три вещи — что
-            делать сейчас, сколько это займёт и чем закончится. Тем, кто уже
-            играл, строка не показывается: им она ничего не добавляет. */}
+        {/* Подсказка для первого визита: что делать, сколько займёт, чем закончится. */}
         {scored.length === 0 && (
           <p className="rise mt-4 max-w-[580px] text-small leading-relaxed text-ink2 text-pretty">
             Если вы здесь впервые — нажмите кнопку выше, настраивать ничего не нужно. Партия занимает
@@ -129,7 +119,6 @@ export function HallView({ scenarios }: { scenarios: Scenario[] }) {
           </p>
         )}
 
-        {/* Три шага — весь онбординг: жюри проходит продукт само, до демонстрации. */}
         <ul className="mt-9 grid grid-cols-1 gap-x-8 gap-y-5 border-t border-line pt-7 sm:grid-cols-3">
           {STEPS.map((s, i) => (
             <li key={s.title} className="rise flex gap-3" style={{ animationDelay: `${120 + i * 70}ms` }}>
@@ -144,13 +133,10 @@ export function HallView({ scenarios }: { scenarios: Scenario[] }) {
           ))}
         </ul>
 
-        {/* Главное отличие продукта — и самое незаметное, если о нём не сказать.
-            Тренажёр на языковой модели, которая сама же и оценивает, собирается
-            за вечер; здесь модель играет человека, а исход считает код. Строка
-            стоит на первом экране, потому что справку открывают не все. */}
+        {/* Модель играет человека, исход считает код — на первом экране, не только в справке. */}
         <div className="rise mt-9 rounded-lg border border-accent-line bg-accent-soft px-5 py-4 sm:px-6 sm:py-5">
           <p className="text-lead font-semibold text-balance">
-            Исход переговоров считает код, а не языковая модель
+            Исход переговоров считает код
           </p>
           <p className="mt-2 max-w-[640px] text-small leading-relaxed text-ink2 text-pretty">
             У каждого условия свой вес, у обеих сторон — свой запасной вариант. Выгодность вашего

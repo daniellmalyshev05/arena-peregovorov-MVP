@@ -34,9 +34,8 @@ export function OfferSheet({
   busy: boolean
 }) {
   const open = scenario.issues.filter((i) => state.visibleIssues.includes(i.id))
-  // Черновик помнит последний пакет. Раньше после встречного или отказа шторка
-  // открывалась с исходных условий: игрок менял одно поле и незаметно
-  // отправлял пакет без всего, о чём уже договаривался в предыдущем.
+  // Черновик начинается с последнего пакета, чтобы после встречного или отказа
+  // не потерять уже согласованные условия.
   const [draft, setDraft] = useState<Deal>(() => {
     const seeded: Deal = { ...state.deal }
     for (const issue of open) {
@@ -87,7 +86,7 @@ export function OfferSheet({
 
   const unbalanced = groups.give.length > 0 && groups.get.length === 0
   const nothingChanged = groups.give.length === 0 && groups.get.length === 0
-  // Кнопка молча не нажималась, пока формулировка короче восьми знаков.
+  // Формулировка короче восьми знаков не отправляется — показываем подсказку.
   const needsWords = !nothingChanged && text.trim().length < 8
 
   const picker = (issueId: string) => {

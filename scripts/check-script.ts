@@ -1,4 +1,4 @@
-/** Проверка сценария демо: те ли формулировки раскрывают интересы. */
+/** Проверка эталонного прохода С1: те ли формулировки раскрывают интересы. */
 import { residentAttraction as s } from '../lib/scenarios/resident-attraction'
 import { applyTurn, createInitialState, evaluateOffer, sanitizeOffer } from '../lib/engine/state'
 import { offlineTurn } from '../lib/llm/offline'

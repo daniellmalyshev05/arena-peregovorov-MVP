@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Кружок дев-индикатора перекрывает кнопку выхода и попадает в демо.
+  // Индикатор дев-режима перекрывает кнопку выхода.
   devIndicators: false,
 };
 

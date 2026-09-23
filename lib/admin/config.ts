@@ -82,11 +82,9 @@ export function applyConfig(base: Scenario, cfg: AdminConfig): Scenario {
   return {
     ...texts,
     id: base.id,
-    // Заголовок, подзаголовок, бриф и публичная позиция остаются от кейса.
-    // Раньше сюда подставлялись слова администратора, и участник получал шапку
-    // про один предмет торга, бриф про другой и первую реплику про третий.
-    // Контекст администратора теперь выбирает кейс (см. lib/admin/match.ts),
-    // а не переписывает его подписи.
+    // Заголовок, подзаголовок, бриф и публичная позиция остаются от кейса:
+    // контекст администратора выбирает кейс (lib/admin/match.ts), а не
+    // переписывает его подписи.
     archetype: cfg.tone,
     maxRounds: clamp(Math.round(cfg.rounds), 4, 24),
     userBatna: { ...base.userBatna, value: userBatna },
@@ -103,7 +101,7 @@ export function applyConfig(base: Scenario, cfg: AdminConfig): Scenario {
   }
 }
 
-/** Насколько настройки увели кейс от библиотечного. Нужно, чтобы честно показать это администратору. */
+/** Насколько настройки увели кейс от библиотечного — показывается администратору. */
 export function describeShift(base: Scenario, tuned: Scenario) {
   return {
     userBatna: tuned.userBatna.value - base.userBatna.value,

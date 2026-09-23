@@ -130,9 +130,7 @@ export function ProfileView({ scenarios }: { scenarios: Scenario[] }) {
               )}
             </div>
 
-            {/* Навыки как допуски: не полоска опыта, а список того, что
-                подтвердилось повторяемостью. Освоенным навык становится с
-                второй зачётной сессии, в которой он сработал. */}
+            {/* Навыки как допуски: освоен со второй зачётной сессии, в которой сработал. */}
             <section className="mt-10">
               <div className="lbl mb-3 flex items-baseline gap-3 border-b border-line pb-2">
                 <span>Навыки</span>
@@ -162,8 +160,7 @@ export function ProfileView({ scenarios }: { scenarios: Scenario[] }) {
               </div>
             </section>
 
-            {/* Прогрессия. В тренажёрах прокачивают персонажа — здесь растёт
-                вторая сторона, и это единственное место, где рост видно целиком. */}
+            {/* Прогрессия: растёт не игрок, а вторая сторона. */}
             <section className="mt-10">
               <div className="lbl mb-3 border-b border-line pb-2">Какой будет вторая сторона</div>
               {adaptation.targets.length === 0 ? (
@@ -180,10 +177,7 @@ export function ProfileView({ scenarios }: { scenarios: Scenario[] }) {
                         Одна сессия — ещё не привычка, и подкручивать по ней нечестно. Но если то же
                         повторится в следующей партии, вторая сторона сядет за стол вот такой:
                       </p>
-                      {/* Причины здесь не подписаны сознательно: они сформулированы
-                          как повторяющаяся привычка («вы часто уступали»), а за одной
-                          сессией такого права нет. Что именно случилось в этой партии,
-                          построчно сказано выше, в навыках. */}
+                      {/* Без причин: они сформулированы как привычки, а сессия пока одна. */}
                       <ul className="mt-3 flex flex-wrap gap-x-2 gap-y-2">
                         {adaptationTargets(forecast).map((t) => (
                           <li
@@ -213,8 +207,7 @@ export function ProfileView({ scenarios }: { scenarios: Scenario[] }) {
                     {adaptationTargets(adaptation).map((t) => (
                       <li key={t.id} className="flex gap-2.5">
                         <span aria-hidden className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
-                        {/* Одной строкой: причина уже названа выше, в «над чем
-                            работать», — здесь важно поведение, а не повтор диагноза. */}
+                        {/* Причина уже названа выше, в «над чем работать». */}
                         <span className="min-w-0 text-small leading-snug">
                           <span className="font-semibold">{t.title}</span>
                           <span className="text-ink2"> — {t.cause}.</span>

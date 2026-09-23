@@ -15,9 +15,8 @@ import { citedFact } from '@/lib/engine/facts'
 
 export const runtime = 'nodejs'
 /**
- * На хостинге функция по умолчанию обрывается раньше, чем отвечает модель:
- * у клиента к OpenRouter свой лимит в 30 секунд, и он должен успеть сработать
- * первым — иначе вместо честной причины в логе будет обрыв соединения.
+ * Лимит функции выше, чем таймаут клиента OpenRouter (30 с): иначе вместо
+ * причины сбоя в логе окажется обрыв соединения.
  */
 export const maxDuration = 60
 
@@ -51,10 +50,8 @@ export async function POST(req: Request) {
   const base = getScenario(body.scenarioId)
   if (!base) return NextResponse.json({ error: 'unknown scenario' }, { status: 404 })
 
-  // Сервер играет тот же кейс, что видит участник. Раньше здесь всегда был
-  // библиотечный: сложность, тон, имя, роль, число раундов и установка
-  // администратора существовали только в браузере, а вердикты и промпт
-  // считались без них — вторая сторона представлялась чужим именем.
+  // Сервер играет тот же кейс, что видит участник: вердикты и промпт
+  // считаются с настройкой администратора (сложность, тон, имя, роль, раунды).
   const decoded = typeof body.config === 'string' ? decodeConfig([base], body.config) : null
   const scenario = decoded ? applyConfig(base, decoded.cfg) : base
   if (!body.state || !body.userText?.trim()) {
@@ -84,8 +81,8 @@ export async function POST(req: Request) {
   let repairs: string[] = []
   let attempt: number | undefined
 
-  // Онлайн — главный режим. Запасной включается либо переменной окружения,
-  // либо вручную на время демонстрации.
+  // Онлайн — главный режим. Запасной включается переменной окружения,
+  // настройкой в админке или при повторе сорвавшегося хода.
   const demo = process.env.DEMO_MODE === 'true' || body.forceOffline === true
   const startedAt = Date.now()
   /** Разговор с моделью в этом ходе — для дозапроса, если реплику придётся переписать. */
@@ -105,8 +102,7 @@ export async function POST(req: Request) {
       { role: 'user', content: buildUserMessage(body.userText, fact?.detail) },
     ]
 
-    // Движок никогда не остаётся без ответа, но падение больше не немое:
-    // каждая причина ухода в офлайн пишется в консоль сервера.
+    // Каждая причина ухода в офлайн пишется в консоль сервера.
     const call = await callOpenRouter(messages)
     if (call.content) convo = { messages, content: call.content }
     if (call.content) {
@@ -182,12 +178,9 @@ export async function POST(req: Request) {
     })
   let result = play(llm)
 
-  // Единственное, чего движок запретить не может, — что модель проговорит секрет
-  // прозой, не пометив раскрытие. Раньше проговорённое сразу засчитывалось
-  // раскрытым — и вопрос в лоб, который код правильно не счёл вопросом SPIN,
-  // всё равно открывал интерес: модель отвечала «мне не защитить это перед
-  // советом». Теперь реплика с утечкой сначала переписывается одним дозапросом,
-  // как и согласие без решения. Засчитывается только то, что проговорено и после.
+  // Модель может проговорить секрет прозой, не пометив раскрытие. Реплика
+  // с утечкой переписывается одним дозапросом, как и согласие без решения;
+  // раскрытым засчитывается только то, что осталось в реплике после него.
   let leaks = source === 'model' ? detectLeak(scenario, result.state, llm.reply) : []
   for (const leak of leaks) console.warn(describeLeak(leak, llm.reply))
   if (leaks.length && convo && Date.now() - startedAt < 30_000) {
