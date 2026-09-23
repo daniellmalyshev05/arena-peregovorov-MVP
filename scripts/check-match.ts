@@ -12,12 +12,12 @@ import { matchScenarios, pickScenario } from '@/lib/admin/match'
 
 let failed = 0
 
-const expect = (query: string, id: string | null) => {
-  const top = pickScenario(scenarios, query)
+const expect = (query: string, id: string | null, goal = '') => {
+  const top = pickScenario(scenarios, [query, goal].filter(Boolean).join(' '), goal)
   const ok = id ? top.scenario.id === id && top.confidence !== 'слабое' : top.confidence === 'слабое'
   if (!ok) failed++
   console.log(
-    `  ${ok ? '✓' : '✗'} ${query}`,
+    `  ${ok ? '✓' : '✗'} ${query}${goal ? ` / вторая сторона: ${goal}` : ''}`,
   )
   console.log(
     `      → ${top.scenario.title}  [${top.confidence}, вес ${top.score}]` +
@@ -50,6 +50,16 @@ console.log('\nСловоформы и чужая сфера с тем же пр
 expect('Здравоохранение Аренда помещения под клинику Арендодатель хочет поднять ставку на 20%', 'supplier-hike')
 expect('Ритейл. Арендодатель повышает ставку аренды склада', 'supplier-hike')
 expect('Ценный программист уходит к конкурентам за большей зарплатой', 'retention-offer')
+
+console.log('\nНаправление: чего добивается вторая сторона\n')
+// Запрос с прогона 23 сентября: слова «ставка», «договор», «склад» тянули в кейс
+// про поставщика, хотя вторая сторона требует снизить цену.
+expect('Логистика. Продление договора на складское хранение с крупным клиентом', 'client-discount', 'Снизить ставку хранения на 20%, иначе уйдёт к другому оператору')
+expect('Аренда склада под логистический центр', 'supplier-hike', 'Поднять ставку аренды на 12% со следующего года')
+expect('Банк. Корпоративный клиент по кредитной линии', 'client-discount', 'Снизить ставку и получить скидку на обслуживание')
+expect('Медицина. Закупка оборудования для клиники, поставщик не даёт скидку', 'supplier-hike', 'Повысить цену сервисного контракта на 10%')
+expect('ИТ. Бюджет департамента на следующий год', 'it-budget', 'Урезать расходы на 20% без исключений')
+expect('Инженер получил оффер от конкурента', 'retention-offer', 'Выровнять зарплату с оффером')
 
 console.log('\nКонтекст, которого в библиотеке нет\n')
 expect('Переговоры о разделе имущества при разводе', null)

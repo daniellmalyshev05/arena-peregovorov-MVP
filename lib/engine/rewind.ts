@@ -20,6 +20,7 @@ export interface RewindCandidate {
   turnIndex: number
   kind:
     | 'unilateral'
+    | 'personal_attack'
     | 'early_offer'
     | 'weak_package'
     | 'missed_interest'
@@ -48,6 +49,19 @@ export function rewindCandidates(scenario: Scenario, state: NegotiationState): R
       kind: 'unilateral',
       title: 'Уступка без встречного условия',
       why: 'Вы отдали условие и не попросили ничего взамен. Здесь ценность утекает быстрее всего.',
+    })
+  }
+
+  // 1б. Переход на личность. Раньше такой ход попадал в «здесь можно было
+  // копнуть глубже» — выпад в адрес человека разбор называл недостаточно
+  // глубоким вопросом.
+  const attack = userTurns.find((t) => t.acts.includes('personal_attack') && !taken(t.index))
+  if (attack) {
+    out.push({
+      turnIndex: attack.index,
+      kind: 'personal_attack',
+      title: 'Здесь разговор перешёл на личность',
+      why: 'Выпад в адрес человека стоил доверия и ничего не дал по существу. Скажите то же самое о проблеме, а не о собеседнике.',
     })
   }
 
@@ -105,16 +119,28 @@ export function rewindCandidates(scenario: Scenario, state: NegotiationState): R
 
   // 6. Интерес, который так и остался нераскрытым. Момент — реплика без находки
   // и без пакета: ход, раскрывший интерес, не может быть местом, где «не копнули».
-  const missed = scenario.hiddenInterests.find((h) => !state.revealedInterests.includes(h.id))
-  if (missed && out.length < 3) {
-    const quiet = userTurns.filter((t) => !t.revealed.length && !t.verdict && !t.dealChanges.length && !taken(t.index))
+  const missedCount = scenario.hiddenInterests.filter((h) => !state.revealedInterests.includes(h.id)).length
+  if (missedCount && out.length < 3) {
+    const quiet = userTurns.filter(
+      (t) =>
+        !t.revealed.length &&
+        !t.verdict &&
+        !t.dealChanges.length &&
+        !t.acts.includes('personal_attack') &&
+        !taken(t.index),
+    )
     const moment = quiet[Math.floor((quiet.length - 1) / 2)]
     if (moment) {
       out.push({
         turnIndex: moment.index,
         kind: 'missed_interest',
         title: 'Здесь можно было копнуть глубже',
-        why: 'Один из интересов второй стороны вы так и не нашли. Вопрос о последствиях открыл бы его.',
+        why:
+          missedCount === scenario.hiddenInterests.length
+            ? 'Ни один интерес второй стороны вы так и не нашли. Вопрос о последствиях открыл бы первый.'
+            : missedCount === 1
+              ? 'Один из интересов второй стороны вы так и не нашли. Вопрос о последствиях открыл бы его.'
+              : `Не найдено интересов второй стороны: ${missedCount} из ${scenario.hiddenInterests.length}. Вопрос о последствиях открыл бы хотя бы один.`,
       })
     }
   }

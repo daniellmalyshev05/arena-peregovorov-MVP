@@ -1,5 +1,5 @@
 import type { Archetype, Scenario } from '@/lib/types'
-import { renameScenario } from './rename'
+import { nameFitsPersona, renameScenario } from './rename'
 
 /**
  * Контекст, который задаёт администратор (ТЗ §2.2): сфера и тема переговоров,
@@ -71,7 +71,9 @@ export function applyConfig(base: Scenario, cfg: AdminConfig): Scenario {
   const userBatna = clamp(base.userBatna.value + step * 3, 5, 92)
   const opponentBatna = clamp(base.opponentBatna.value + step * 5, 5, 92)
 
-  const name = cfg.opponentName.trim() || base.persona.name
+  // Имя другого пола не применяется: тексты кейса написаны под пол персонажа.
+  const asked = cfg.opponentName.trim()
+  const name = asked && nameFitsPersona(base, asked) ? asked : base.persona.name
   const role = cfg.opponentRole.trim() || base.persona.role
 
   // Новое имя — во всех текстах кейса, в нужном падеже (см. lib/admin/rename.ts).
@@ -90,6 +92,7 @@ export function applyConfig(base: Scenario, cfg: AdminConfig): Scenario {
     userBatna: { ...base.userBatna, value: userBatna },
     opponentBatna: { ...base.opponentBatna, value: opponentBatna },
     organizerNote: cfg.opponentGoal.trim() || undefined,
+    organizerContext: [cfg.sphere, cfg.topic].map((t) => t.trim()).filter(Boolean).join(' · ') || undefined,
     persona: {
       ...texts.persona,
       name,

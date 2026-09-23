@@ -28,6 +28,20 @@ export function isFemaleName(first: string): boolean {
   return /[ая]$/.test(n) && !MALE_A.has(n)
 }
 
+/**
+ * Подходит ли имя персонажу по полу.
+ *
+ * Имя подставляется во все тексты кейса, а местоимения и согласования —
+ * «она готова», «настроена партнёрски» — нет. Имя другого пола давало в
+ * разборе «Игорь настроена». Такое имя не применяется: участник видит
+ * библиотечного персонажа, администратор — объяснение под полем.
+ */
+export function nameFitsPersona(base: Scenario, full: string): boolean {
+  const first = full.trim().split(/\s+/)[0] ?? ''
+  if (!first) return true
+  return isFemaleName(first) === isFemaleName(base.persona.name.split(' ')[0])
+}
+
 function paradigm(first: string): Paradigm | null {
   if (!/^[А-ЯЁ][а-яё]+$/.test(first)) return null
   const last = first.slice(-1)

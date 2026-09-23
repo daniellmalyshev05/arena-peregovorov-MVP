@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Scenario } from '@/lib/types'
 import { applyConfig, defaultConfig, DIFFICULTY_LABELS, matchQuery, TONES, type AdminConfig } from '@/lib/admin/config'
 import { matchScenarios } from '@/lib/admin/match'
-import { isFemaleName } from '@/lib/admin/rename'
+import { isFemaleName, nameFitsPersona } from '@/lib/admin/rename'
 import { encodeConfig } from '@/lib/admin/link'
 import { clearConfig, loadConfig, loadMode, saveConfig, saveMode, type OpponentMode } from '@/lib/admin/storage'
 import { auditScenario } from '@/lib/engine/audit'
@@ -55,7 +55,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
 
   // Контекст администратора — запрос, а не подпись: по нему выбирается кейс.
   const query = matchQuery(cfg)
-  const ranked = useMemo(() => matchScenarios(scenarios, query), [scenarios, query])
+  const ranked = useMemo(() => matchScenarios(scenarios, query, cfg.opponentGoal), [scenarios, query, cfg.opponentGoal])
   const match = ranked[0]
   const nearest = ranked.filter((m) => m.score > 0).slice(0, 3)
 
@@ -103,7 +103,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
   const nameLooksLikePhrase = cfg.opponentName.trim().split(/\s+/).filter(Boolean).length > 3
   const baseFemale = isFemaleName(base.persona.name.split(' ')[0])
   const newFirst = cfg.opponentName.trim().split(/\s+/)[0] ?? ''
-  const genderMismatch = Boolean(newFirst) && cfg.opponentName.trim() !== base.persona.name && isFemaleName(newFirst) !== baseFemale
+  const genderMismatch = Boolean(newFirst) && !nameFitsPersona(base, cfg.opponentName)
   const blockers = audit.issues.filter((i) => i.severity === 'blocker')
   const warnings = audit.issues.filter((i) => i.severity === 'warning')
 
@@ -294,11 +294,11 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                 {/* Поле легко перепутать с «чего добивается вторая сторона»: оба про
                     неё. Но это имя подписывает каждую реплику и собирает инициалы,
                     так что фраза вместо имени видна участнику весь разговор. */}
-                {/* Имя подставляется во все тексты кейса, а местоимения в них — нет:
-                    бриф написан под персонажа определённого пола. */}
+                {/* Имя подставляется во все тексты кейса, а местоимения в них — нет,
+                    поэтому имя другого пола не применяется (см. nameFitsPersona). */}
                 {!nameLooksLikePhrase && genderMismatch && (
-                  <span className="mt-1 block text-caption leading-snug text-ink3">
-                    Имя подставится во все тексты кейса, но местоимения в них написаны под {baseFemale ? 'женского' : 'мужского'} персонажа. Лучше выбрать имя того же пола.
+                  <span className="mt-1 block text-caption leading-snug text-danger">
+                    Тексты этого кейса написаны {baseFemale ? 'о женщине' : 'о мужчине'}, поэтому имя «{newFirst}» не подставится — участник увидит «{base.persona.name}». Введите {baseFemale ? 'женское' : 'мужское'} имя.
                   </span>
                 )}
                 {nameLooksLikePhrase && (

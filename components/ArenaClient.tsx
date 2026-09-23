@@ -17,7 +17,7 @@ import { OfferSheet } from './OfferSheet'
 import { Portrait } from './Portrait'
 import { decapitalize } from '@/lib/text'
 import { count } from '@/lib/plural'
-import { actTag } from '@/lib/techniques'
+import { actTags } from '@/lib/techniques'
 
 /**
  * Тур по столу переговоров.
@@ -689,6 +689,11 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
                 <div className="flex items-start gap-4">
                   <div className="min-w-0 flex-1">
                     <div className="lbl mb-2">С чего начинается разговор</div>
+                    {scenario.organizerContext && (
+                      <p className="mb-2 text-caption leading-snug text-ink3">
+                        Кейс подобран под запрос организатора: «{scenario.organizerContext}»
+                      </p>
+                    )}
                     <p className="text-small leading-relaxed text-ink2">{scenario.userBrief}</p>
                     {adaptation.note && (
                       <p className="mt-2.5 flex items-start gap-2 rounded-md border border-accent-line bg-accent-soft px-3 py-2 text-small leading-relaxed text-ink2">
@@ -733,11 +738,10 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
                     {/* Какой приём прозвучал — и к какой методике он относится. */}
                     {t.acts.length > 0 && (
                       <div className="mt-1.5 flex flex-wrap justify-end gap-1.5">
-                        {t.acts.map((a) => {
-                          const tag = actTag(a)
+                        {actTags(t.acts).map((tag) => {
                           return (
                             <span
-                              key={a}
+                              key={tag.act}
                               className={`rounded-sm px-1.5 py-px text-[11px] font-medium leading-4 ${
                                 tag.tone === 'good'
                                   ? 'bg-accent-soft text-accent'

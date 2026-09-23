@@ -87,6 +87,8 @@ export function OfferSheet({
 
   const unbalanced = groups.give.length > 0 && groups.get.length === 0
   const nothingChanged = groups.give.length === 0 && groups.get.length === 0
+  // Кнопка молча не нажималась, пока формулировка короче восьми знаков.
+  const needsWords = !nothingChanged && text.trim().length < 8
 
   const picker = (issueId: string) => {
     const issue = open.find((i) => i.id === issueId)!
@@ -223,13 +225,15 @@ export function OfferSheet({
               <p className={`mt-[7px] text-caption ${unbalanced ? 'text-danger' : 'text-ink3'}`}>
                 {unbalanced
                   ? 'Вы отдаёте условие и не просите ничего взамен.'
-                  : 'Насколько пакет устроит вторую сторону, покажет только ответ.'}
+                  : needsWords
+                    ? 'Допишите пару слов: как вы это предложите. Формулировку услышит вторая сторона.'
+                    : 'Насколько пакет устроит вторую сторону, покажет только ответ.'}
               </p>
             </div>
 
             <button
               onClick={() => onSend(draft, text.trim())}
-              disabled={busy || nothingChanged || text.trim().length < 8}
+              disabled={busy || nothingChanged || needsWords}
               className="press flex h-11 shrink-0 items-center gap-2 rounded-md bg-accent px-[22px] font-semibold text-white hover:bg-accent/92 disabled:opacity-35"
             >
               {busy ? 'Отправляем…' : 'Отправить пакет'}

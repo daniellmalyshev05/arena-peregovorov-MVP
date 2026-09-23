@@ -46,7 +46,7 @@ const TERMS: Record<string, string[]> = {
   ],
   'supplier-hike': [
     'поставщик', 'вендор', 'закупки', 'закупка', 'снабжение', 'цена', 'тариф', 'ставка',
-    'повышение', 'подорожание', 'рост цены', 'индексация', 'скидка', 'контракт', 'договор',
+    'повышение', 'подорожание', 'рост цены', 'индексация', 'контракт', 'договор',
     'затраты', 'объём', 'поставка', 'логистика', 'отсрочка платежа', 'смета',
     'подписка', 'лицензия',
     'аренда', 'арендодатель', 'арендатор', 'ставка аренды', 'помещение', 'офис', 'склад', 'поднять', 'поднимает', 'повысить', 'повышает', 'подорожать', 'дороже', 'рост', 'стоимость', 'прайс', 'услуги', 'обслуживание', 'сырьё', 'материалы', 'комплектующие',
@@ -73,6 +73,36 @@ const TERMS: Record<string, string[]> = {
     'выручка', 'сеть', 'ритейл', 'розница', 'сервис', 'подписка на сервис', 'платформа',
     'уровень сервиса', 'sla', 'поддержка', 'конкурент', 'тендер', 'закупщик',
   ],
+}
+
+/**
+ * Куда вторая сторона двигает цену.
+ *
+ * Словарь кейса не видит направления: «снизить ставку хранения» и «поднять
+ * ставку аренды» совпадают по словам «ставка», «договор», «склад», и запрос
+ * клиента, который требует скидку, уходил в кейс про поставщика, который
+ * повышает тариф. Направление берётся только из поля «Чего добивается вторая
+ * сторона»: «поставщик не даёт скидку» в теме — про нас, а не про неё.
+ */
+type Direction = 'lower' | 'raise'
+const DIRECTION: Record<string, Direction> = {
+  'supplier-hike': 'raise',
+  'retention-offer': 'raise',
+  'client-discount': 'lower',
+  'it-budget': 'lower',
+}
+const LOWER = /(сниз|сниж|скидк|дисконт|дешевл|уменьш|сократ|сокращ|урез|срез|убав)[а-яё]*/
+const RAISE = /(повыс|повыш|подня|поднима|поднят|увелич|подорож|дороже|индексир|прибав|выровн)[а-яё]*/
+
+function directionOf(goal: string): { dir: Direction; word: string } | undefined {
+  const text = goal.toLowerCase().replace(/ё/g, 'е')
+  const lower = text.match(LOWER)
+  const raise = text.match(RAISE)
+  // Оба направления в одной фразе («снизить цену, но поднять объём») — не угадываем.
+  if (lower && raise) return undefined
+  if (lower) return { dir: 'lower', word: lower[0] }
+  if (raise) return { dir: 'raise', word: raise[0] }
+  return undefined
 }
 
 const STOP = new Set([
@@ -170,8 +200,9 @@ export interface Match {
  * Пустой запрос возвращает библиотеку в исходном порядке со «слабым» совпадением:
  * молчание не повод делать вид, что выбор обоснован.
  */
-export function matchScenarios(scenarios: Scenario[], query: string): Match[] {
+export function matchScenarios(scenarios: Scenario[], query: string, goal = ''): Match[] {
   const asked = [...new Set(terms(query))]
+  const direction = directionOf(goal)
   const spoken = new Map<string, string>()
   for (const [raw, s] of words(query)) if (!spoken.has(s)) spoken.set(s, raw)
 
@@ -188,6 +219,18 @@ export function matchScenarios(scenarios: Scenario[], query: string): Match[] {
       score += weight
       if (weight >= 3) strong += 1
       matched.push(spoken.get(t) ?? t)
+    }
+    // Совпавшее направление — сильный сигнал, противоположное — почти приговор:
+    // кейс про повышение не учит отвечать на требование скидки.
+    const own = DIRECTION[scenario.id]
+    if (direction && own) {
+      if (own === direction.dir) {
+        score += 4
+        strong += 1
+        if (!matched.includes(direction.word)) matched.push(direction.word)
+      } else {
+        score = Math.max(0, score - 6)
+      }
     }
     const coverage = asked.length ? matched.length / asked.length : 0
     return { scenario, score, matched, confidence: confidenceOf(score, coverage, strong) }
@@ -213,6 +256,6 @@ function confidenceOf(score: number, coverage: number, strong: number): MatchCon
 }
 
 /** Подобранный кейс и объяснение выбора. */
-export function pickScenario(scenarios: Scenario[], query: string): Match {
-  return matchScenarios(scenarios, query)[0]
+export function pickScenario(scenarios: Scenario[], query: string, goal = ''): Match {
+  return matchScenarios(scenarios, query, goal)[0]
 }

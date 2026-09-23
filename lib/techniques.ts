@@ -29,7 +29,9 @@ export const ACT_INFO: Record<SpeechAct, ActInfo> = {
   unilateral_concession: { label: 'уступка без встречного условия', tone: 'bad' },
   positional_bargaining: { label: 'позиционный торг', method: 'Гарвардский метод', tone: 'bad' },
   personal_attack: { label: 'давление на человека', method: 'Гарвардский метод', tone: 'bad' },
-  bluff: { label: 'блеф', tone: 'neutral' },
+  // Блеф — выдуманная альтернатива. Это ошибка именно по BATNA: опора на
+  // запасной вариант, которого нет. Нейтральная метка читалась как приём.
+  bluff: { label: 'блеф вместо настоящей альтернативы', method: 'BATNA', tone: 'bad' },
   authority_check: { label: 'проверка полномочий', tone: 'neutral' },
   // Сигнал о выходе бывает и опорой на запасной вариант, и блефом-угрозой — хвалить его вслепую нельзя.
   walkaway_signal: { label: 'опора на запасной вариант', method: 'BATNA', tone: 'neutral' },
@@ -40,6 +42,16 @@ export function actTag(act: SpeechAct): { text: string; tone: ActInfo['tone'] } 
   const info = ACT_INFO[act]
   const text = info.method ? `${info.method} · ${info.label}` : info.label[0].toUpperCase() + info.label.slice(1)
   return { text, tone: info.tone }
+}
+
+/**
+ * Метки одной реплики. Сигнал о выходе рядом с блефом — это угроза выдуманной
+ * альтернативой, а не опора на запасной вариант: вторую метку не показываем,
+ * иначе под блефом стоит «BATNA · опора на запасной вариант».
+ */
+export function actTags(acts: SpeechAct[]): { act: SpeechAct; text: string; tone: ActInfo['tone'] }[] {
+  const shown = acts.includes('bluff') ? acts.filter((a) => a !== 'walkaway_signal') : acts
+  return shown.map((act) => ({ act, ...actTag(act) }))
 }
 
 /** Какая методика стоит за строкой результата или штрафом (ключи — из `scoring.ts`). */

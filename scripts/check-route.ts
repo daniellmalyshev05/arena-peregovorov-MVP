@@ -17,6 +17,7 @@ import { createInitialState, evaluateOffer } from '../lib/engine/state'
 import { buildSystemPrompt } from '../lib/llm/prompt'
 import { enumerateDeals } from '../lib/engine/utility'
 import type { Deal, NegotiationState, Scenario } from '../lib/types'
+import { isFemaleName } from '../lib/admin/rename'
 
 let failed = 0
 const check = (ok: boolean, text: string) => {
@@ -76,10 +77,11 @@ async function main() {
     }
 
     // 3. Имя и роль доходят до модели.
-    const renamed = { ...defaultConfig(base), opponentName: 'Ирина Соколова', opponentRole: 'директор по продажам' }
+    const newName = isFemaleName(base.persona.name.split(' ')[0]) ? 'Ирина Соколова' : 'Игорь Соколов'
+    const renamed = { ...defaultConfig(base), opponentName: newName, opponentRole: 'директор по продажам' }
     const prompt = buildSystemPrompt(applyConfig(base, renamed), createInitialState(base))
-    const who = prompt.split('\n').find((l) => l.startsWith('Ирина Соколова')) ?? ''
-    check(who.startsWith('Ирина Соколова, директор по продажам'), 'имя и роль из настройки — в строке «кто ты» промпта')
+    const who = prompt.split('\n').find((l) => l.startsWith(newName)) ?? ''
+    check(who.startsWith(newName + ', директор по продажам'), 'имя и роль из настройки — в строке «кто ты» промпта')
     check(!prompt.includes(`${base.persona.name},`), 'библиотечного имени в строке «кто ты» нет')
 
     // 4. Испорченная настройка не роняет ход.

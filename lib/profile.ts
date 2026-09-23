@@ -128,13 +128,19 @@ export function patterns(runs: RunRecord[]): Pattern[] {
       detail: 'Самая дорогая привычка: ценность утекает именно здесь. Связывайте уступку с тем, что получаете взамен.',
       tone: 'weak',
     })
-  } else if (sum((r) => r.conditional) > sum((r) => r.unilateral) * 2) {
-    out.push({
-      id: 'exchange',
-      title: 'Вы почти всегда просите что-то взамен',
-      detail: 'Дисциплина обмена держится стабильно от сессии к сессии.',
-      tone: 'strong',
-    })
+  } else {
+    // Считается по сессиям, а не по сумме ходов: один условный обмен за две
+    // партии давал «почти всегда просите взамен», а навык ниже на том же
+    // экране честно стоял «в работе, 1 из 2». Предикат — тот же, что у навыка.
+    const clean = scored.filter((r) => r.conditional > 0 && r.unilateral === 0).length
+    if (clean >= 2 && clean / n >= 0.75) {
+      out.push({
+        id: 'exchange',
+        title: 'Вы почти всегда просите что-то взамен',
+        detail: `Обмен без уступок даром — в ${clean} из ${n} переговоров.`,
+        tone: 'strong',
+      })
+    }
   }
 
   if (act('spin_implication') === 0) {

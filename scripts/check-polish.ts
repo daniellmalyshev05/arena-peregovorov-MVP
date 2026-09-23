@@ -23,7 +23,8 @@ const check = (ok: boolean, label: string) => {
 
 console.log('Имя из админки\n')
 for (const sc of scenarios) {
-  const t = applyConfig(sc, { ...defaultConfig(sc), opponentName: 'Анна Петрова' })
+  const female = isFemaleName(sc.persona.name.split(' ')[0])
+  const t = applyConfig(sc, { ...defaultConfig(sc), opponentName: female ? 'Анна Петрова' : 'Игорь Лебедев' })
   const json = JSON.stringify({ ...t, persona: { ...t.persona, portrait: undefined } })
   const first = sc.persona.name.split(' ')[0]
   const left = json.match(new RegExp(`(?<![а-яё])${first.slice(0, 4)}[а-яё]*`, 'g')) ?? []
@@ -35,6 +36,15 @@ check(r('Роману нужен') === 'Роману нужен', 'чужое и
 check(renamer('Марина Крылова', 'Игорь Лебедев')('Марине выгоднее') === 'Игорю выгоднее', 'дательный: «Марине» → «Игорю»')
 check(r('Викторина') === 'Викторина', 'слово, начинающееся с имени, не трогается')
 check(isFemaleName('Анна') && !isFemaleName('Илья') && !isFemaleName('Денис'), 'пол имени для подсказки в админке')
+for (const sc of scenarios) {
+  const female = isFemaleName(sc.persona.name.split(' ')[0])
+  const other = female ? 'Игорь Соколов' : 'Анна Петрова'
+  const t = applyConfig(sc, { ...defaultConfig(sc), opponentName: other })
+  check(
+    t.persona.name === sc.persona.name && !JSON.stringify(t).includes(other.split(' ')[0]),
+    `${sc.id}: имя другого пола не подставляется — «${other}» остаётся «${sc.persona.name}»`,
+  )
+}
 
 console.log('\nНавык «Сравнение с отказом»\n')
 {
