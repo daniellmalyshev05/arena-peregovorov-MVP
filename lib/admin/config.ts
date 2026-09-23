@@ -1,4 +1,5 @@
 import type { Archetype, Scenario } from '@/lib/types'
+import { renameScenario } from './rename'
 
 /**
  * Контекст, который задаёт администратор (ТЗ §2.2): сфера и тема переговоров,
@@ -73,8 +74,11 @@ export function applyConfig(base: Scenario, cfg: AdminConfig): Scenario {
   const name = cfg.opponentName.trim() || base.persona.name
   const role = cfg.opponentRole.trim() || base.persona.role
 
+  // Новое имя — во всех текстах кейса, в нужном падеже (см. lib/admin/rename.ts).
+  const texts = renameScenario(base, name)
+
   return {
-    ...base,
+    ...texts,
     id: base.id,
     // Заголовок, подзаголовок, бриф и публичная позиция остаются от кейса.
     // Раньше сюда подставлялись слова администратора, и участник получал шапку
@@ -87,7 +91,7 @@ export function applyConfig(base: Scenario, cfg: AdminConfig): Scenario {
     opponentBatna: { ...base.opponentBatna, value: opponentBatna },
     organizerNote: cfg.opponentGoal.trim() || undefined,
     persona: {
-      ...base.persona,
+      ...texts.persona,
       name,
       role,
       // Портрет привязан к имени: своё имя — свои инициалы вместо чужого лица.

@@ -31,7 +31,8 @@ export const ACT_INFO: Record<SpeechAct, ActInfo> = {
   personal_attack: { label: 'давление на человека', method: 'Гарвардский метод', tone: 'bad' },
   bluff: { label: 'блеф', tone: 'neutral' },
   authority_check: { label: 'проверка полномочий', tone: 'neutral' },
-  walkaway_signal: { label: 'опора на запасной вариант', method: 'BATNA', tone: 'good' },
+  // Сигнал о выходе бывает и опорой на запасной вариант, и блефом-угрозой — хвалить его вслепую нельзя.
+  walkaway_signal: { label: 'опора на запасной вариант', method: 'BATNA', tone: 'neutral' },
 }
 
 /** Метка хода для ленты: «SPIN · извлекающий вопрос». */

@@ -3,6 +3,7 @@
 import type { NegotiationState, Scenario } from '@/lib/types'
 import { optionOf, utility } from '@/lib/engine/utility'
 import { count } from '@/lib/plural'
+import { signed } from '@/lib/text'
 
 /**
  * Правая колонка: проект соглашения.
@@ -155,8 +156,7 @@ export function DealPanel({
         <div className="mb-[6px] flex items-baseline justify-between gap-3">
           <span className="text-small">Ваш выигрыш к запасному варианту</span>
           <span className={`num text-small font-semibold ${gainPct < 0 ? 'text-danger' : 'text-accent'}`}>
-            {gainPct >= 0 ? '+' : ''}
-            {gainPct}%
+            {signed(gainPct, 0)}%
           </span>
         </div>
         <div className="relative h-[5px] overflow-hidden rounded-full bg-line2">

@@ -6,7 +6,7 @@ import type { ScoreReport } from '@/lib/engine/scoring'
 import { concededAt, momentContext, type RewindCandidate } from '@/lib/engine/rewind'
 import { analyze } from '@/lib/engine/utility'
 import { decapitalize, num } from '@/lib/text'
-import { count } from '@/lib/plural'
+import { count, plural } from '@/lib/plural'
 import { newlyMastered } from '@/lib/profile'
 import { adaptationTargets, computeAdaptation } from '@/lib/engine/adaptive'
 import { Portrait } from './Portrait'
@@ -189,6 +189,9 @@ export function Debrief({
   }
   const fault = [
     score.rootCauseTurn,
+    // Штраф с привязкой к ходу — тоже ошибка. Без этого переход на личность
+    // перед выходом из переговоров давал заголовок «без резких поворотов».
+    ...score.penalties.map((p) => p.turnIndex),
     ...candidates
       .filter((c) => c.kind !== 'missed_interest' && c.kind !== 'turning_point' && c.kind !== 'walkaway')
       .map((c) => c.turnIndex),
@@ -426,7 +429,7 @@ export function Debrief({
                     <span className={`num text-title font-semibold ${leftOnTableBad ? 'text-danger' : ''}`}>
                       {num(economy.valueLeftOnTable)}
                     </span>
-                    <span className="ml-1.5 text-ink3">пунктов ценности</span>
+                    <span className="ml-1.5 text-ink3">пункта ценности</span>
                   </div>
                   <p className="text-ink2">
                     {economy.paretoImprovementExisted
@@ -475,22 +478,22 @@ export function Debrief({
                   {[
                     {
                       n: verdictTurns.length,
-                      t: 'решений по вашим пакетам',
+                      t: `${plural(verdictTurns.length, ['решение', 'решения', 'решений'])} по вашим пакетам`,
                       d: 'Принять, ответить встречным или отказаться — каждое посчитано до обращения к модели.',
                     },
                     {
                       n: userTurns.length,
-                      t: 'проверок речевого акта',
+                      t: `${plural(userTurns.length, ['проверка', 'проверки', 'проверок'])} речевого акта`,
                       d: 'Интерес открывается, только если ход действительно подходит под него. Заявку модели код сверяет со списком.',
                     },
                     {
                       n: combos,
-                      t: 'комбинаций сделки перебрано',
+                      t: `${plural(combos, ['комбинация', 'комбинации', 'комбинаций'])} сделки перебрано`,
                       d: 'Отсюда граница возможного на карте и ваша точка на ней.',
                     },
                     {
                       n: score.lines.length,
-                      t: 'показателей результата',
+                      t: `${plural(score.lines.length, ['показатель', 'показателя', 'показателей'])} результата`,
                       d: `Со своими весами${score.penalties.length ? ` и ${count(score.penalties.length, ['штрафом', 'штрафами', 'штрафами'])}` : ''} — ни один не назначен на глаз.`,
                     },
                   ].map((r) => (
@@ -590,7 +593,9 @@ export function Debrief({
               {!moment?.turn
                 ? 'Переговоры прошли без резких поворотов'
                 : isFault
-                  ? 'Один ход изменил экономику сделки'
+                  ? moment.turn.acts.includes('personal_attack') && !concededAt(moment.turn)
+                    ? 'Один ход испортил разговор'
+                    : 'Один ход изменил экономику сделки'
                   : 'Один ход развернул переговоры'}
             </h1>
 
@@ -599,7 +604,8 @@ export function Debrief({
               <div className="absolute inset-x-0 top-[11px] h-[1.5px] bg-line" />
               {userTurns.map((t, i) => {
                 const left = userTurns.length > 1 ? (i / (userTurns.length - 1)) * 96 + 2 : 50
-                const bad = concededAt(t) || t.acts.includes('personal_attack')
+                const conceded = concededAt(t)
+                const bad = conceded || t.acts.includes('personal_attack')
                 const good = t.revealed.length > 0 || t.acts.includes('objective_criterion')
                 const isFocus = t.index === focus
                 return (
@@ -614,7 +620,7 @@ export function Debrief({
                       } ${isFocus ? (bad ? 'ring-4 ring-danger/15' : 'ring-4 ring-accent/15') : ''}`}
                     />
                     <span className={`num whitespace-nowrap text-label ${bad ? 'font-semibold text-danger' : good ? 'font-semibold text-accent' : 'text-ink3'}`}>
-                      {bad ? 'уступка' : good ? 'находка' : i + 1}
+                      {conceded ? 'уступка' : bad ? 'давление' : good ? 'находка' : i + 1}
                     </span>
                   </div>
                 )
@@ -667,7 +673,7 @@ export function Debrief({
                       <span className={`num font-semibold ${leftOnTableBad ? 'text-danger' : ''}`}>
                         {num(economy.valueLeftOnTable)}
                       </span>{' '}
-                      пунктов ценности
+                      пункта ценности
                     </div>
                     <div>
                       <div className="lbl mb-1">Дисциплина уступок</div>

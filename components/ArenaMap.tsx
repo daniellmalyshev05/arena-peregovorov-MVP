@@ -61,18 +61,28 @@ export function ArenaMap({
     }
   }, [scenario])
 
-  const you = {
-    user: utility(scenario, state.deal, 'user'),
-    opponent: utility(scenario, state.deal, 'opponent'),
-  }
-  const mine = history.filter((r) => r.scenarioId === scenario.id && !r.training).slice(-6)
+  const uB = scenario.userBatna.value
+  const oB = scenario.opponentBatna.value
+
+  // Без сделки обе стороны остаются при своих запасных вариантах — там и точка.
+  // Раньше рисовался проект соглашения, которое никто не подписал: точка
+  // «ваша сделка» уходила ниже вашего же запасного варианта, а шаг разбора
+  // перед картой говорил, что вы остались при нём.
+  const noDeal = state.status !== 'deal'
+  const you = noDeal
+    ? { user: uB, opponent: oB }
+    : { user: utility(scenario, state.deal, 'user'), opponent: utility(scenario, state.deal, 'opponent') }
+  const youLabel = noDeal ? 'без сделки' : 'ваша сделка'
+  const mine = history
+    .filter((r) => r.scenarioId === scenario.id && !r.training)
+    .slice(-6)
+    .map((r) => (r.status === 'deal' ? r : { ...r, userUtility: uB, opponentUtility: oB }))
 
   const x = (v: number) => M.left + (v / 100) * (W - M.left - M.right)
   const y = (v: number) => H - M.bottom - (v / 100) * (H - M.top - M.bottom)
 
-  const uB = scenario.userBatna.value
-  const oB = scenario.opponentBatna.value
   const inZopa = you.user >= uB && you.opponent >= oB
+  const youColor = noDeal ? 'var(--color-ink2)' : inZopa ? 'var(--color-accent)' : 'var(--color-danger)'
 
   if (asTable) {
     return (
@@ -88,7 +98,7 @@ export function ArenaMap({
           </thead>
           <tbody>
             <tr className="border-b border-line2 font-semibold">
-              <td className="py-2">ваша сделка</td>
+              <td className="py-2">{youLabel}</td>
               <td className="py-2 text-right">{num(you.user)}</td>
               <td className="py-2 text-right">{num(you.opponent)}</td>
             </tr>
@@ -120,7 +130,7 @@ export function ArenaMap({
         className="mx-auto block w-full"
         style={{ maxHeight: 'min(56vh, 420px)' }}
         role="img"
-        aria-label={`Карта сделок. Ваша сделка: ${you.user.toFixed(0)} вам, ${you.opponent.toFixed(0)} второй стороне.`}
+        aria-label={`Карта сделок. ${noDeal ? 'Без сделки' : 'Ваша сделка'}: ${you.user.toFixed(0)} вам, ${you.opponent.toFixed(0)} второй стороне.`}
       >
         {/* Зона, где обе стороны выигрывают относительно своих альтернатив */}
         <rect
@@ -189,16 +199,16 @@ export function ArenaMap({
         <g className="map-pop" style={{ transformOrigin: `${x(you.opponent)}px ${y(you.user)}px` }}>
           <circle
             cx={x(you.opponent)} cy={y(you.user)} r="13"
-            fill={inZopa ? 'var(--color-accent)' : 'var(--color-danger)'} opacity="0.14"
+            fill={youColor} opacity="0.14"
           />
           <circle cx={x(you.opponent)} cy={y(you.user)} r="7"
-            fill={inZopa ? 'var(--color-accent)' : 'var(--color-danger)'}
+            fill={youColor}
             stroke="var(--color-surface)" strokeWidth="2">
-            <title>{`ваша сделка: вам ${num(you.user)}, второй стороне ${num(you.opponent)}`}</title>
+            <title>{`${youLabel}: вам ${num(you.user)}, второй стороне ${num(you.opponent)}`}</title>
           </circle>
           <text x={x(you.opponent)} y={y(you.user) - 17} className="map-label" fontSize="11.5" fontWeight="600"
-            textAnchor="middle" fill={inZopa ? 'var(--color-accent)' : 'var(--color-danger)'}>
-            ваша сделка
+            textAnchor="middle" fill={youColor}>
+            {youLabel}
           </text>
         </g>
 
@@ -218,9 +228,9 @@ export function ArenaMap({
         <Key>
           <span
             className="h-2.5 w-2.5 rounded-full"
-            style={{ background: inZopa ? 'var(--color-accent)' : 'var(--color-danger)' }}
+            style={{ background: youColor }}
           />{' '}
-          ваша сделка
+          {youLabel}
         </Key>
         <Key><span className="h-2.5 w-2.5 rounded-full border-[1.5px] border-ink3 bg-surface" /> прошлые сессии</Key>
         <Key><span className="h-2 w-2 rotate-45 border-[1.5px] border-ink2 bg-surface" /> опорные стратегии</Key>

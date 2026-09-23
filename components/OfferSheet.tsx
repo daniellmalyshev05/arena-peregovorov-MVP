@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { LayoutGroup, MotionConfig, motion } from 'motion/react'
 import type { Deal, NegotiationState, Scenario } from '@/lib/types'
 import { optionOf, utility } from '@/lib/engine/utility'
+import { signed } from '@/lib/text'
 
 /**
  * Сборка предложения.
@@ -205,10 +206,10 @@ export function OfferSheet({
               <div className="mb-[6px] flex items-baseline justify-between gap-3">
                 <span className="text-small">Ваш выигрыш к запасному варианту</span>
                 <span className="num whitespace-nowrap text-small font-semibold">
-                  <span className="text-ink3">{pct(before) >= 0 ? '+' : ''}{pct(before)}%</span>
+                  <span className="text-ink3">{signed(pct(before), 0)}%</span>
                   <span className="text-ink3"> → </span>
                   <span className={pct(after) < 0 ? 'text-danger' : 'text-accent'}>
-                    {pct(after) >= 0 ? '+' : ''}{pct(after)}%
+                    {signed(pct(after), 0)}%
                   </span>
                 </span>
               </div>

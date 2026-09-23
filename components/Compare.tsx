@@ -3,6 +3,7 @@
 import type { NegotiationState, Scenario } from '@/lib/types'
 import type { ScoreReport } from '@/lib/engine/scoring'
 import { analyze, optionOf, utility } from '@/lib/engine/utility'
+import { signed } from '@/lib/text'
 
 /**
  * Развилка: две реальности рядом.
@@ -107,7 +108,7 @@ export function Compare({
                 pct(s) < 0 ? 'text-danger' : leads ? 'text-accent' : 'text-ink'
               }`}
             >
-              {pct(s) >= 0 ? '+' : ''}{pct(s)}%
+              {signed(pct(s), 0)}%
             </span>
           </div>
           <div className="h-[5px] overflow-hidden rounded-full bg-line2">

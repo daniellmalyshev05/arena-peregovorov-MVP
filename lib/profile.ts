@@ -2,7 +2,7 @@
 
 import type { NegotiationState, Scenario, SpeechAct } from '@/lib/types'
 import type { ScoreReport } from '@/lib/engine/scoring'
-import { utility } from '@/lib/engine/utility'
+import { analyze, utility } from '@/lib/engine/utility'
 import { num } from '@/lib/text'
 import { count } from '@/lib/plural'
 
@@ -22,6 +22,8 @@ export interface RunRecord {
   facts: number
   /** Сделка оказалась хуже собственного запасного варианта. Может отсутствовать в старых записях профиля. */
   belowBatna?: boolean
+  /** Вышел из переговоров там, где зоны соглашения не было вовсе: выход был верным. */
+  rightWalkaway?: boolean
   brier: number | null
   acts: Partial<Record<SpeechAct, number>>
   /** Сессия после отката. Хранится, но в зачёт и в статистику не идёт. */
@@ -90,6 +92,7 @@ export function buildRun(
     conditional: state.conditionalOffers,
     facts: state.playedFacts.length,
     belowBatna: state.status === 'deal' && utility(scenario, state.deal, 'user') < scenario.userBatna.value,
+    ...(state.status === 'walkaway' ? { rightWalkaway: !analyze(scenario, state.deal).zopaExists } : {}),
     brier,
     acts,
     training,
@@ -313,14 +316,18 @@ export function skills(runs: RunRecord[]): Skill[] {
     build(
       'walkaway',
       'Сравнение с отказом',
-      scored,
+      // Навык проверяется там, где было что сравнивать: сделка или выход из
+      // кейса без зоны соглашения. Раньше в зачёт шла любая сессия без сделки
+      // ниже запасного варианта — и два выхода подряд после одной реплики
+      // объявлялись освоенным навыком.
+      scored.filter((r) => r.status === 'deal' || r.rightWalkaway === true),
       (r) => !r.belowBatna,
       {
-        untested: 'Нужны две зачётные сессии, доведённые до исхода.',
+        untested: 'Нужны две зачётные сессии, закончившиеся сделкой или обоснованным выходом.',
         single: (ok) => ok
-          ? 'В этой сессии сделка была не хуже вашего запасного варианта. Ещё одна такая — навык зачтён.'
+          ? 'В этой сессии итог был не хуже вашего запасного варианта. Ещё одна такая — навык зачтён.'
           : 'В этой сессии сделка вышла хуже вашего запасного варианта.',
-        learning: (hits, n) => `Сделка была не хуже вашего запасного варианта в ${hits} из ${n}.`,
+        learning: (hits, n) => `Итог был не хуже вашего запасного варианта в ${hits} из ${n}.`,
         mastered: (hits) => `Вы не соглашаетесь на то, что хуже отказа: подтверждено в ${sessions(hits)}.`,
       },
     ),

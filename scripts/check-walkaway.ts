@@ -56,8 +56,13 @@ for (const s of scenarios) {
 
     if (reachable === 0) {
       check(
-        r.headline.includes('это было правильно') || r.headline.includes('и это было правильно'),
-        `${s.id}: при ${revealed} раскрытых сделки не было, а выход назван ошибкой`,
+        // Из открытого сделки не было: выход не ошибка. Если интересы остались
+        // закрытыми, заголовок говорит об этом, но не называет выход ошибкой.
+        !r.headline.includes('хотя договориться было можно') &&
+          (revealed < s.hiddenInterests.length
+            ? r.headline.includes('не выяснив интересы второй стороны')
+            : r.headline.includes('это было правильно')),
+        `${s.id}: при ${revealed} раскрытых сделки не было, а заголовок неверный: «${r.headline}»`,
       )
     } else {
       check(

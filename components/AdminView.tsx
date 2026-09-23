@@ -4,10 +4,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Scenario } from '@/lib/types'
 import { applyConfig, defaultConfig, DIFFICULTY_LABELS, matchQuery, TONES, type AdminConfig } from '@/lib/admin/config'
 import { matchScenarios } from '@/lib/admin/match'
+import { isFemaleName } from '@/lib/admin/rename'
 import { encodeConfig } from '@/lib/admin/link'
 import { clearConfig, loadConfig, loadMode, saveConfig, saveMode, type OpponentMode } from '@/lib/admin/storage'
 import { auditScenario } from '@/lib/engine/audit'
-import { num } from '@/lib/text'
+import { num, signed } from '@/lib/text'
 import { ScenarioMap } from './ScenarioMap'
 
 /**
@@ -100,6 +101,9 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
 
   const field = 'w-full min-w-0 rounded-md border border-line bg-surface px-3 py-2.5 text-small outline-none focus:border-accent-line md:py-2'
   const nameLooksLikePhrase = cfg.opponentName.trim().split(/\s+/).filter(Boolean).length > 3
+  const baseFemale = isFemaleName(base.persona.name.split(' ')[0])
+  const newFirst = cfg.opponentName.trim().split(/\s+/)[0] ?? ''
+  const genderMismatch = Boolean(newFirst) && cfg.opponentName.trim() !== base.persona.name && isFemaleName(newFirst) !== baseFemale
   const blockers = audit.issues.filter((i) => i.severity === 'blocker')
   const warnings = audit.issues.filter((i) => i.severity === 'warning')
 
@@ -290,6 +294,13 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                 {/* Поле легко перепутать с «чего добивается вторая сторона»: оба про
                     неё. Но это имя подписывает каждую реплику и собирает инициалы,
                     так что фраза вместо имени видна участнику весь разговор. */}
+                {/* Имя подставляется во все тексты кейса, а местоимения в них — нет:
+                    бриф написан под персонажа определённого пола. */}
+                {!nameLooksLikePhrase && genderMismatch && (
+                  <span className="mt-1 block text-caption leading-snug text-ink3">
+                    Имя подставится во все тексты кейса, но местоимения в них написаны под {baseFemale ? 'женского' : 'мужского'} персонажа. Лучше выбрать имя того же пола.
+                  </span>
+                )}
                 {nameLooksLikePhrase && (
                   <span className="mt-1 block text-caption leading-snug text-ink3">
                     Этим именем персонаж подписан в каждой реплике — похоже, сюда попала фраза, а не имя.
@@ -382,10 +393,10 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                   <span className="text-ink3"> из {audit.totalDeals} вариантов</span>
                 </Row>
                 <Row label="Цена позиционного торга">
-                  <span className="num font-semibold text-danger">{num(audit.positional.userSurplus)}</span>
+                  <span className="num font-semibold text-danger">{signed(audit.positional.userSurplus)}</span>
                 </Row>
                 <Row label="Максимум совместной ценности">
-                  <span className="num font-semibold">+{num(audit.maxJointSurplus)}</span>
+                  <span className="num font-semibold">{signed(audit.maxJointSurplus)}</span>
                 </Row>
                 <Row label="Дешевле всего отдать">
                   <span className="text-ink2">{audit.cheapestToGive.label}</span>
