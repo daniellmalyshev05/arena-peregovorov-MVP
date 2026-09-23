@@ -10,6 +10,7 @@ import { count } from '@/lib/plural'
 import { newlyMastered } from '@/lib/profile'
 import { adaptationTargets, computeAdaptation } from '@/lib/engine/adaptive'
 import { Portrait } from './Portrait'
+import { SCORE_METHOD, type Method } from '@/lib/techniques'
 import { ArenaMap } from './ArenaMap'
 import type { RunRecord } from '@/lib/profile'
 
@@ -354,9 +355,12 @@ export function Debrief({
                 {score.lines.map((l) => (
                   <div key={l.key}>
                     <div className="mb-1.5 flex items-baseline justify-between gap-3 text-small">
-                      <span>{l.label}</span>
+                      <span>
+                        {l.label}
+                        {SCORE_METHOD[l.key] && <MethodTag method={SCORE_METHOD[l.key]} />}
+                      </span>
                       <span className={`num whitespace-nowrap ${l.earned === 0 ? 'text-danger' : 'text-ink2'}`}>
-                        {l.earned} / {l.max}
+                        {points(l.earned)} / {l.max}
                       </span>
                     </div>
                     <div className="h-1 rounded-full bg-line2">
@@ -374,7 +378,10 @@ export function Debrief({
                 <div className="mt-8 border-t border-line pt-4">
                   {score.penalties.map((p) => (
                     <div key={p.key} className="flex justify-between gap-3 py-1 text-small">
-                      <span className="text-danger">{p.label}</span>
+                      <span className="text-danger">
+                        {p.label}
+                        {SCORE_METHOD[p.key] && <MethodTag method={SCORE_METHOD[p.key]} />}
+                      </span>
                       <span className="num font-semibold text-danger">−{p.points}</span>
                     </div>
                   ))}
@@ -900,4 +907,18 @@ export function Debrief({
       </div>
     </main>
   )
+}
+
+/** Методика, на которой стоит показатель: названа там же, где стоит балл. */
+function MethodTag({ method }: { method: Method }) {
+  return (
+    <span className="ml-2 inline-flex translate-y-[-1px] items-center whitespace-nowrap rounded-sm border border-line px-1.5 py-px align-middle text-[11px] font-medium leading-4 text-ink3">
+      {method}
+    </span>
+  )
+}
+
+/** Баллы с запятой, как и все числа в разборе; целые — без «,0». */
+function points(value: number) {
+  return Number.isInteger(value) ? String(value) : num(value)
 }

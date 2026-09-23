@@ -36,6 +36,7 @@ const TERMS: Record<string, string[]> = {
     'субподрядчик', 'исполнитель', 'стройка', 'строительство', 'корпус', 'объект',
     'график', 'эскалация', 'конфликт', 'претензия', 'штраф', 'неустойка', 'приёмка',
     'качество работ', 'проект', 'внедрение', 'сдача', 'аванс', 'авансирование',
+    'ремонт', 'монтаж', 'опоздание', 'срывает', 'сроки сдачи', 'генподряд',
   ],
   'resident-default': [
     'невыполнение', 'обязательства', 'нарушение', 'дефолт', 'расторжение', 'разрыв',
@@ -48,6 +49,7 @@ const TERMS: Record<string, string[]> = {
     'повышение', 'подорожание', 'рост цены', 'индексация', 'скидка', 'контракт', 'договор',
     'затраты', 'объём', 'поставка', 'логистика', 'отсрочка платежа', 'смета',
     'подписка', 'лицензия',
+    'аренда', 'арендодатель', 'арендатор', 'ставка аренды', 'помещение', 'офис', 'склад', 'поднять', 'поднимает', 'повысить', 'повышает', 'подорожать', 'дороже', 'рост', 'стоимость', 'прайс', 'услуги', 'обслуживание', 'сырьё', 'материалы', 'комплектующие',
   ],
   'it-budget': [
     'бюджет', 'бюджетирование', 'сокращение бюджета', 'урезать', 'срезать', 'оптимизация расходов',
@@ -55,6 +57,7 @@ const TERMS: Record<string, string[]> = {
     'ит', 'айти', 'информационные технологии', 'цифровизация', 'внедрение системы',
     'учётная система', 'проект', 'департамент', 'подразделение', 'внутренние переговоры',
     'защита бюджета', 'капзатраты', 'правление',
+    'урезают', 'сокращение', 'финансирование', 'смета отдела', 'бюджет отдела', 'защитить бюджет',
   ],
   'retention-offer': [
     'сотрудник', 'удержание', 'удержать', 'оффер', 'увольнение', 'уволиться', 'зарплата',
@@ -62,6 +65,7 @@ const TERMS: Record<string, string[]> = {
     'кадры', 'персонал', 'найм', 'hr', 'эйчар', 'отдел кадров', 'руководитель', 'подчинённый',
     'инженер', 'разработчик', 'карьера', 'рост', 'мотивация', 'удалёнка', 'удалённая работа',
     'конкурент переманивает', 'хантинг',
+    'сотрудница', 'специалист', 'программист', 'менеджер', 'уход', 'переманивают', 'контроффер', 'контрофер', 'пересмотр зарплаты',
   ],
   'client-discount': [
     'клиент', 'заказчик', 'продажи', 'продажа', 'продавец', 'продлить', 'продление',
@@ -77,14 +81,55 @@ const STOP = new Set([
   'нужно', 'должен', 'можно', 'очень', 'также', 'между', 'своих', 'наших', 'этого',
 ])
 
-/** Основа слова: шесть букв. Грубо, зато переживает русские окончания. */
-const stem = (w: string) => (w.length > 6 ? w.slice(0, 6) : w)
+/**
+ * Основа слова: без окончания, не длиннее шести букв.
+ *
+ * Раньше бралось просто шесть первых букв, и короткие слова не сводились
+ * вовсе: «ставку» и «ставка» оставались разными словами, и запрос «поднять
+ * ставку аренды» не находил кейс про повышение тарифа.
+ */
+const ENDINGS = [
+  'иями', 'ями', 'ами', 'ого', 'его', 'ому', 'ему', 'ыми', 'ими', 'ией', 'ия', 'ие', 'ий', 'ой', 'ей',
+  'ом', 'ем', 'ам', 'ям', 'ах', 'ях', 'ов', 'ев', 'ую', 'юю', 'ая', 'яя', 'ое', 'ее', 'ые', 'ый', 'ть',
+  'а', 'я', 'о', 'е', 'у', 'ю', 'ы', 'и', 'й', 'ь',
+]
+const stem = (w: string) => {
+  let base = w
+  for (const e of ENDINGS) {
+    if (base.endsWith(e) && base.length - e.length >= 4) {
+      base = base.slice(0, -e.length)
+      break
+    }
+  }
+  return base.length > 6 ? base.slice(0, 6) : base
+}
+
+/**
+ * Совпадение основ. Точное — всегда; префиксное — только для основ от пяти
+ * букв: «арендо(датель)» находит «аренд(а)», а «рост» не цепляет «ростов».
+ */
+function lookup(idx: Map<string, number>, t: string): number | undefined {
+  const exact = idx.get(t)
+  if (exact) return exact
+  if (t.length < 5) return undefined
+  let best: number | undefined
+  for (const [k, weight] of idx) {
+    if (k.length < 5) continue
+    if (t.startsWith(k) || k.startsWith(t)) best = Math.max(best ?? 0, weight)
+  }
+  return best
+}
 
 function terms(text: string): string[] {
-  const out: string[] = []
+  return words(text).map(([, s]) => s)
+}
+
+/** Слова запроса вместе с основами: администратору показываются его слова, а не обрубки. */
+function words(text: string): [string, string][] {
+  const out: [string, string][] = []
   for (const raw of text.toLowerCase().replace(/ё/g, 'е').split(/[^0-9a-zа-я]+/)) {
     if (raw.length < 4 || STOP.has(raw)) continue
-    out.push(stem(raw))
+    out.push([raw, stem(raw)])
   }
   return out
 }
@@ -127,6 +172,8 @@ export interface Match {
  */
 export function matchScenarios(scenarios: Scenario[], query: string): Match[] {
   const asked = [...new Set(terms(query))]
+  const spoken = new Map<string, string>()
+  for (const [raw, s] of words(query)) if (!spoken.has(s)) spoken.set(s, raw)
 
   const ranked = scenarios.map((scenario) => {
     const idx = index(scenario)
@@ -136,11 +183,11 @@ export function matchScenarios(scenarios: Scenario[], query: string): Match[] {
     // «Руководитель» из подписи роли — это не понимание контекста.
     let strong = 0
     for (const t of asked) {
-      const weight = idx.get(t)
+      const weight = lookup(idx, t)
       if (!weight) continue
       score += weight
       if (weight >= 3) strong += 1
-      matched.push(t)
+      matched.push(spoken.get(t) ?? t)
     }
     const coverage = asked.length ? matched.length / asked.length : 0
     return { scenario, score, matched, confidence: confidenceOf(score, coverage, strong) }

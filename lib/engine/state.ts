@@ -3,6 +3,7 @@ import type {
 } from '@/lib/types'
 import { initialDeal, optionOf, shiftDirection, surplus, utility } from './utility'
 import { NO_ADAPTATION, type Adaptation } from './adaptive'
+import { isDirectAsk } from './acts'
 
 export function createInitialState(scenario: Scenario): NegotiationState {
   return {
@@ -183,6 +184,8 @@ export interface LlmTurnOutput {
   detectedActs: SpeechAct[]
   revealedInterests: string[]
   proposedDeal?: Partial<Deal>
+  /** Условия, названные игроком словами, — сопоставлены моделью, проверяются здесь. */
+  userOffer?: Partial<Deal>
   stateDelta?: { trust?: number; irritation?: number; pressure?: number }
 }
 
@@ -216,13 +219,18 @@ export function applyTurn(input: ApplyTurnInput): ApplyTurnResult {
   const state = clone(input.state)
   const index = state.transcript.length
 
+  // Вопрос в лоб актами SPIN не считается, как бы его ни разметила модель.
+  const detectedActs = isDirectAsk(userText)
+    ? (llm.detectedActs ?? []).filter((a) => !a.startsWith('spin_'))
+    : (llm.detectedActs ?? [])
+
   // 1. Раскрытие интересов — только если речевой акт реально подходит.
   const newlyRevealed: string[] = []
   for (const id of llm.revealedInterests ?? []) {
     const interest = scenario.hiddenInterests.find((h) => h.id === id)
     if (!interest) continue
     if (state.revealedInterests.includes(id)) continue
-    const unlocked = interest.unlockedBy.some((act) => llm.detectedActs.includes(act))
+    const unlocked = interest.unlockedBy.some((act) => detectedActs.includes(act))
     if (!unlocked) continue
     state.revealedInterests.push(id)
     newlyRevealed.push(id)
@@ -287,7 +295,7 @@ export function applyTurn(input: ApplyTurnInput): ApplyTurnResult {
     if (concessions.length && gains.length) return 'conditional' as const
     return undefined
   }
-  const acts = new Set<SpeechAct>(llm.detectedActs ?? [])
+  const acts = new Set<SpeechAct>(detectedActs)
   if (offered.length) {
     acts.delete('unilateral_concession')
     acts.delete('conditional_offer')
@@ -319,10 +327,27 @@ export function applyTurn(input: ApplyTurnInput): ApplyTurnResult {
     else state.hypotheses.push({ id: h.id, text: probe.text, confidence: clampRange(h.confidence, 0, 1) })
   }
 
+  // Условия, названные словами без пакета. Модель лишь сопоставила их с
+  // уровнями — здесь проверяется, что условие на столе, уровень существует и
+  // он отличается от текущего. В соглашение это не идёт: только в подсказку
+  // «соберите пакетом» с уже выбранными уровнями.
+  let spokenOffer: Record<string, string> | undefined
+  if (!Object.keys(incoming).length && llm.userOffer) {
+    for (const [issueId, optionId] of Object.entries(llm.userOffer)) {
+      const issue = issueById(scenario, issueId)
+      if (!issue || !state.visibleIssues.includes(issueId)) continue
+      if (typeof optionId !== 'string' || !issue.options.some((o) => o.id === optionId)) continue
+      if (state.deal[issueId] === optionId) continue
+      ;(spokenOffer ??= {})[issueId] = optionId
+    }
+  }
+
   // 5. Записываем оба хода.
   state.transcript.push({
     index, role: 'user', text: userText, acts: [...acts],
-    dealChanges, revealed: newlyRevealed, factPlayed, verdict, timestamp: Date.now(),
+    dealChanges, revealed: newlyRevealed, factPlayed, verdict,
+    ...(spokenOffer ? { spokenOffer } : {}),
+    timestamp: Date.now(),
   })
   state.transcript.push({
     index: index + 1, role: 'opponent', text: llm.reply, acts: [],

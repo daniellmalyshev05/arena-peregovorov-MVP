@@ -56,6 +56,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
   const query = matchQuery(cfg)
   const ranked = useMemo(() => matchScenarios(scenarios, query), [scenarios, query])
   const match = ranked[0]
+  const nearest = ranked.filter((m) => m.score > 0).slice(0, 3)
 
   /** Переносит контекст и сложность на другой кейс, остальное берёт из него. */
   const useCase = (next: Scenario) =>
@@ -156,7 +157,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                     : !query
                       ? 'Кейс по умолчанию'
                       : match.confidence === 'слабое'
-                        ? 'Близкого кейса не нашлось'
+                        ? nearest.length ? 'Совпадение слабое' : 'Близкого кейса не нашлось'
                         : `Подобран кейс · совпадение ${match.confidence}`}
                 </div>
                 <div className="text-small font-semibold">{base.title}</div>
@@ -167,9 +168,26 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                     : !query
                       ? 'Опишите ситуацию выше — или выберите кейс из библиотеки сами.'
                       : match.confidence === 'слабое'
-                        ? 'Библиотека покрывает промышленный и закупочный контур, внутренние бюджеты, удержание сотрудников и продажи. Описание не совпало ни с одним кейсом — выберите ближайший сами, иначе участник получит симуляцию не про то.'
+                        ? nearest.length
+                          ? 'Ниже — кейсы, в которых совпало больше всего слов из описания. Выберите подходящий, иначе участник получит симуляцию не про то.'
+                          : 'Библиотека покрывает промышленный и закупочный контур, внутренние бюджеты, удержание сотрудников и продажи. Описание не совпало ни с одним кейсом — выберите ближайший сами, иначе участник получит симуляцию не про то.'
                         : `Совпало по словам: ${match.matched.join(', ')}.`}
                 </p>
+                {/* Слабое совпадение — не тупик: ближайшие кейсы выбираются одним нажатием. */}
+                {!manual && match.confidence === 'слабое' && nearest.length > 0 && (
+                  <div className="mt-2.5 flex flex-col gap-1.5">
+                    {nearest.map((m) => (
+                      <button
+                        key={m.scenario.id}
+                        onClick={() => { setManual(true); useCase(m.scenario); setSaved(false) }}
+                        className="press rounded-md border border-line bg-surface px-3 py-2 text-left hover:border-accent-line"
+                      >
+                        <span className="text-small">{m.scenario.title}</span>
+                        <span className="mt-0.5 block text-caption text-ink3">совпало: {m.matched.join(', ')}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5">
                   <button
                     onClick={() => setShowLibrary((v) => !v)}

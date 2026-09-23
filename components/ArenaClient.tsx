@@ -17,6 +17,7 @@ import { OfferSheet } from './OfferSheet'
 import { Portrait } from './Portrait'
 import { decapitalize } from '@/lib/text'
 import { count } from '@/lib/plural'
+import { actTag } from '@/lib/techniques'
 
 /**
  * Тур по столу переговоров.
@@ -39,9 +40,20 @@ const TOUR = [
   {
     title: 'Соглашение и пакет',
     detail:
-      'Справа — проект соглашения и кнопка «Собрать предложение» (на телефоне — кнопка «Соглашение»). Пакет уходит целиком: вторая сторона отвечает на него одним решением.',
+      'Справа — проект соглашения и кнопка «Собрать предложение» (на телефоне — кнопка «Соглашение»). Пакет уходит целиком: вторая сторона отвечает на него одним решением. Условия, названные только в чате, в соглашение не попадают.',
   },
 ]
+
+/**
+ * Правило, по которому код принял решение по пакету. Без чисел: выигрыш второй
+ * стороны в игре намеренно скрыт, иначе пакет подбирался бы перебором. Числа
+ * этой партии — в разборе, на шаге «Кто это посчитал».
+ */
+const VERDICT_RULE: Record<'accept' | 'counter' | 'reject', string> = {
+  accept: 'пакет не хуже её ожиданий → согласие',
+  counter: 'лучше её запасного варианта, но ниже ожиданий → встречное',
+  reject: 'хуже её запасного варианта → отказ',
+}
 
 const TOUR_KEY = 'arena.tour.v1'
 
@@ -136,6 +148,25 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
       }))
     return rows.length ? { deal: counter, rows } : null
   }, [lastOffer, scenario.issues, state.deal, state.standingCounter, state.status, state.transcript])
+
+  // Условия, названные словами без пакета. В соглашение они не попадают, и
+  // без этой карточки человек слышит «интересно» и считает, что договорился.
+  // Уровни сопоставила модель, проверил движок — пакет открывается уже собранным.
+  const spokenView = useMemo(() => {
+    const said = state.transcript[state.transcript.length - 2]
+    if (state.status !== 'active' || said?.role !== 'user' || said.verdict) return null
+    const offerActs = (['conditional_offer', 'unilateral_concession', 'positional_bargaining'] as const).some((a) => said.acts.includes(a))
+    const spoken = said.spokenOffer ?? {}
+    if (!offerActs && !Object.keys(spoken).length) return null
+    const rows = scenario.issues
+      .filter((i) => spoken[i.id] && spoken[i.id] !== state.deal[i.id])
+      .map((i) => ({
+        label: i.label,
+        from: i.options.find((o) => o.id === state.deal[i.id])?.label ?? '',
+        to: i.options.find((o) => o.id === spoken[i.id])?.label ?? '',
+      }))
+    return { deal: { ...state.deal, ...spoken } as Deal, rows }
+  }, [scenario.issues, state.deal, state.status, state.transcript])
 
   const openers = scenario.openers ?? []
 
@@ -699,11 +730,35 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
                         {t.text}
                       </div>
                     </div>
+                    {/* Какой приём прозвучал — и к какой методике он относится. */}
+                    {t.acts.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap justify-end gap-1.5">
+                        {t.acts.map((a) => {
+                          const tag = actTag(a)
+                          return (
+                            <span
+                              key={a}
+                              className={`rounded-sm px-1.5 py-px text-[11px] font-medium leading-4 ${
+                                tag.tone === 'good'
+                                  ? 'bg-accent-soft text-accent'
+                                  : tag.tone === 'bad'
+                                    ? 'bg-danger-soft text-danger'
+                                    : 'bg-line2 text-ink3'
+                              }`}
+                            >
+                              {tag.text}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
                 )
               }
               // Раскрытие интереса движок записывает в ход игрока — плашка идёт перед ответом.
               const revealedHere = state.transcript[i - 1]?.revealed?.length ?? 0
+              // Ответ на пакет: решение принял код до того, как модель начала говорить.
+              const decided = state.transcript[i - 1]?.role === 'user' ? state.transcript[i - 1].verdict : undefined
               return (
                 <div key={i} className={isLast ? 'line-in' : undefined}>
                   {revealedHere > 0 && (
@@ -722,6 +777,12 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
                       <div className={isLast ? 'text-lead tracking-[-0.005em] text-pretty xl:text-reply' : 'leading-relaxed text-ink2'}>
                         {t.text}
                       </div>
+                      {decided && (
+                        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-ink3">
+                          <span className="rounded-sm border border-line px-1.5 py-px text-[11px] font-medium leading-4">посчитано кодом</span>
+                          <span>{VERDICT_RULE[decided]}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -757,7 +818,15 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
             {/* Гипотеза одним кликом */}
             {hint && !busy && (
               <div className="rise ml-11 flex max-w-[600px] flex-wrap items-center gap-x-4 gap-y-2.5 rounded-md border border-line bg-paper px-3.5 py-2.5">
-                <span className="min-w-[180px] flex-1 text-small">{hint.text}</span>
+                <span className="min-w-[180px] flex-1 text-small">
+                  {hint.text}
+                  {/* Первая гипотеза: без объяснения карточку пропускают, а это 15 баллов из 100. */}
+                  {hint.probeId && state.hypotheses.length === 0 && (
+                    <span className="mt-1 block text-caption leading-snug text-ink3">
+                      Это догадка о второй стороне. Отметьте, насколько она верна: точность таких оценок даёт до 15 баллов из 100.
+                    </span>
+                  )}
+                </span>
                 {hint.probeId ? (
                   <div className="ml-auto flex gap-1.5">
                     {[
@@ -854,6 +923,41 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
                 </div>
               )
             })()}
+
+            {/* Предложение прозвучало в чате: собрать его пакетом — одно нажатие. */}
+            {spokenView && !busy && !pendingDeal && !counterView && (
+              <div className="rise ml-11 max-w-[600px] rounded-md border border-line bg-surface px-4 py-3">
+                <p className="text-small leading-snug text-ink2">
+                  Условия из вашей реплики в соглашение не попали: туда идёт только пакет, и решение по нему считает код.
+                </p>
+                {spokenView.rows.length > 0 && (
+                  <div className="mt-2 flex flex-col">
+                    {spokenView.rows.map((r) => (
+                      <div
+                        key={r.label}
+                        className="flex flex-col gap-0.5 border-b border-line2 py-[7px] last:border-0 sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,auto)] sm:items-baseline sm:gap-3"
+                      >
+                        <span className="text-small text-ink2">{r.label}</span>
+                        <span className="num flex flex-wrap items-baseline gap-x-[7px] text-small sm:justify-end sm:text-right">
+                          <span className="text-ink3 line-through decoration-line-strong">{r.from}</span>
+                          <span className="font-semibold">{r.to}</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button
+                  onClick={() => {
+                    setSheetSeed(spokenView.deal)
+                    setSheet(true)
+                  }}
+                  className="press mt-3 flex h-8 items-center gap-1.5 rounded-sm border border-accent-line bg-accent-soft px-3 text-caption font-semibold text-accent hover:border-accent"
+                >
+                  {spokenView.rows.length ? 'Собрать пакет с этими условиями' : 'Собрать пакет'}
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+                </button>
+              </div>
+            )}
 
             {/* Встречное предложение: условия посчитаны движком, его можно взять в шторку как есть. */}
             {counterView && !busy && (

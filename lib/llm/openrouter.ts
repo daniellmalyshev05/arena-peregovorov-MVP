@@ -28,7 +28,15 @@ export interface CallResult {
  * Поле `reasoning` провайдер отвергает с 400, поэтому его здесь нет: лишняя
  * попытка стоила бы по одному холостому запросу на каждый ход.
  */
-export async function callOpenRouter(messages: ChatMessage[]): Promise<CallResult> {
+export interface CallOptions {
+  /** Таймаут одной попытки. По умолчанию 20 с — две попытки укладываются в лимит функции. */
+  timeoutMs?: number
+  /** Одна попытка вместо двух: для дозапросов, у которых свой, меньший бюджет времени. */
+  single?: boolean
+}
+
+export async function callOpenRouter(messages: ChatMessage[], options: CallOptions = {}): Promise<CallResult> {
+  const timeoutMs = options.timeoutMs ?? 20_000
   const key = process.env.OPENROUTER_API_KEY
   const model = process.env.OPENROUTER_MODEL ?? 'google/gemini-3.8-flash-20260902'
   if (!key) return { content: null, error: 'OPENROUTER_API_KEY не задан' }
@@ -36,12 +44,12 @@ export async function callOpenRouter(messages: ChatMessage[]): Promise<CallResul
   const attempts: Array<Record<string, unknown>> = [
     { response_format: { type: 'json_object' } },
     {},
-  ]
+  ].slice(0, options.single ? 1 : 2)
 
   let lastError = ''
   for (const [i, extra] of attempts.entries()) {
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 20_000)
+    const timeout = setTimeout(() => controller.abort(), timeoutMs)
     try {
       const res = await fetch(ENDPOINT, {
         method: 'POST',
@@ -67,7 +75,7 @@ export async function callOpenRouter(messages: ChatMessage[]): Promise<CallResul
       lastError = 'провайдер вернул пустой ответ: ' + JSON.stringify(data).slice(0, 300)
     } catch (e) {
       const err = e as Error
-      lastError = err.name === 'AbortError' ? 'таймаут 20 с' : `сеть: ${err.message}`
+      lastError = err.name === 'AbortError' ? `таймаут ${Math.round(timeoutMs / 1000)} с` : `сеть: ${err.message}`
     } finally {
       clearTimeout(timeout)
     }

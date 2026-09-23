@@ -3,7 +3,8 @@ import { getScenario } from '@/lib/scenarios'
 import { applyConfig } from '@/lib/admin/config'
 import { decodeConfig } from '@/lib/admin/link'
 import { applyTurn, evaluateOffer, grantLeaked, sanitizeOffer, type LlmTurnOutput } from '@/lib/engine/state'
-import { buildSystemPrompt, buildUserMessage, buildVerdictInstruction, describeCounter } from '@/lib/llm/prompt'
+import { buildNoOfferInstruction, buildSystemPrompt, buildUserMessage, buildVerdictInstruction, describeCounter } from '@/lib/llm/prompt'
+import { consentCorrection, detectConsent } from '@/lib/llm/consent'
 import { parseLlmTurn } from '@/lib/llm/schema'
 import { callOpenRouter, type ChatMessage } from '@/lib/llm/openrouter'
 import { offlineTurn } from '@/lib/llm/offline'
@@ -86,11 +87,12 @@ export async function POST(req: Request) {
   // Онлайн — главный режим. Запасной включается либо переменной окружения,
   // либо вручную на время демонстрации.
   const demo = process.env.DEMO_MODE === 'true' || body.forceOffline === true
+  const startedAt = Date.now()
   if (!demo) {
     const counterTerms = verdict?.counter && normalizedOffer ? describeCounter(scenario, normalizedOffer, verdict.counter) : undefined
     const system =
       buildSystemPrompt(scenario, body.state, adaptation.instruction) +
-      (verdict ? buildVerdictInstruction(verdict.verdict, verdict.opponentSurplus, counterTerms) : '')
+      (verdict ? buildVerdictInstruction(verdict.verdict, verdict.opponentSurplus, counterTerms) : buildNoOfferInstruction())
     const history: ChatMessage[] = body.state.transcript.slice(-8).map((t) => ({
       role: t.role === 'user' ? ('user' as const) : ('assistant' as const),
       content: t.role === 'user' ? t.text : JSON.stringify({ reply: t.text }),
@@ -122,6 +124,36 @@ export async function POST(req: Request) {
     } else {
       fallbackReason = call.error ?? 'модель не ответила'
       console.error('[арена] обращение к модели не удалось —', fallbackReason)
+    }
+
+    // Согласие без решения движка. Реплика переписывается одним дозапросом;
+    // если времени на него нет или модель упорствует — реплику говорит
+    // запасной движок, который по построению соглашается только на `accept`.
+    // Разметка хода (акты, раскрытия) остаётся от первого ответа: переписывается
+    // только то, что прозвучало вслух.
+    const consent = llm ? detectConsent(llm.reply, verdict?.verdict) : null
+    if (llm && consent && call.content) {
+      console.warn(`[арена] согласие без решения движка («${consent.phrase}»): ${consent.sentence}`)
+      let fixed: string | undefined
+      if (Date.now() - startedAt < 30_000) {
+        const retry = await callOpenRouter(
+          [...messages, { role: 'assistant', content: call.content }, { role: 'user', content: consentCorrection(verdict?.verdict) }],
+          { single: true, timeoutMs: 15_000 },
+        )
+        const reparsed = retry.content ? parseLlmTurn(retry.content).turn : null
+        if (reparsed && !detectConsent(reparsed.reply, verdict?.verdict)) fixed = reparsed.reply
+      }
+      if (fixed) {
+        llm = { ...llm, reply: fixed }
+        repairs.push(`согласие без решения движка («${consent.phrase}»): реплика переписана`)
+      } else {
+        const safe = offlineTurn(
+          scenario, body.state, body.userText, verdict?.verdict, factPlayed,
+          verdict?.counter && normalizedOffer ? { offered: normalizedOffer, counter: verdict.counter } : undefined,
+        )
+        llm = { ...llm, reply: safe.reply }
+        repairs.push(`согласие без решения движка («${consent.phrase}»): реплику сказал запасной движок`)
+      }
     }
   }
 

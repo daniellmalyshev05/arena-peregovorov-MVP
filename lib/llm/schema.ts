@@ -14,6 +14,8 @@ export interface LlmTurn {
   detectedActs: (typeof SPEECH_ACTS)[number][]
   revealedInterests: string[]
   proposedDeal?: Record<string, string>
+  /** Условия, которые игрок назвал словами. Модель только сопоставляет их с уровнями, проверяет код. */
+  userOffer?: Record<string, string>
   stateDelta?: { trust?: number; irritation?: number; pressure?: number }
 }
 
@@ -113,6 +115,15 @@ export function parseLlmTurn(raw: string): ParseOutcome {
   }
 
   // Дельты настроения зажимаем, а не отвергаем.
+  let userOffer: Record<string, string> | undefined
+  if (o.userOffer && typeof o.userOffer === 'object') {
+    const out: Record<string, string> = {}
+    for (const [k, v] of Object.entries(o.userOffer as Record<string, unknown>)) {
+      if (typeof v === 'string') out[k] = v
+    }
+    if (Object.keys(out).length) userOffer = out
+  }
+
   let stateDelta: LlmTurn['stateDelta']
   if (o.stateDelta && typeof o.stateDelta === 'object') {
     const src = o.stateDelta as Record<string, unknown>
@@ -129,7 +140,7 @@ export function parseLlmTurn(raw: string): ParseOutcome {
     }
   }
 
-  return { turn: { reply, detectedActs, revealedInterests, proposedDeal, stateDelta }, repairs }
+  return { turn: { reply, detectedActs, revealedInterests, proposedDeal, userOffer, stateDelta }, repairs }
 }
 
 /** Похоже на реплику человека, а не на служебный мусор. */
