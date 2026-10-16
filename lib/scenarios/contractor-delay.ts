@@ -240,6 +240,7 @@ export const contractorDelay: Scenario = {
 
   persona: {
     name: 'Илья Савельев',
+    portrait: 'ilya-saveliev.jpg',
     role: 'генеральный директор',
     company: 'генподрядчик',
     speechStyle:

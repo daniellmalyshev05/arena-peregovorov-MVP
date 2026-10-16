@@ -235,6 +235,7 @@ export const clientDiscount: Scenario = {
 
   persona: {
     name: 'Елена Гарина',
+    portrait: 'elena-garina.jpg',
     role: 'директор по закупкам',
     company: 'федеральная розничная сеть',
     speechStyle:

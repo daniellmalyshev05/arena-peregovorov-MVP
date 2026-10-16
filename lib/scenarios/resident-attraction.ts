@@ -248,6 +248,7 @@ export const residentAttraction: Scenario = {
 
   persona: {
     name: 'Виктор Ремизов',
+    portrait: 'viktor-remizov.jpg',
     role: 'директор по развитию',
     company: 'промышленная группа',
     speechStyle:

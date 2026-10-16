@@ -236,6 +236,7 @@ export const itBudget: Scenario = {
 
   persona: {
     name: 'Олег Панкратов',
+    portrait: 'oleg-pankratov.jpg',
     role: 'финансовый директор',
     company: 'финансовая служба компании',
     speechStyle:

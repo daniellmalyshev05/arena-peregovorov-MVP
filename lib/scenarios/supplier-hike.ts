@@ -250,6 +250,7 @@ export const supplierHike: Scenario = {
 
   persona: {
     name: 'Марина Крылова',
+    portrait: 'marina-krylova.jpg',
     role: 'коммерческий директор',
     company: 'поставщик',
     speechStyle:

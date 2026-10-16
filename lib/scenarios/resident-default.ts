@@ -238,6 +238,7 @@ export const residentDefault: Scenario = {
 
   persona: {
     name: 'Роман Артемьев',
+    portrait: 'roman-artemiev.jpg',
     role: 'собственник компании-резидента',
     company: 'резидент ОЭЗ',
     speechStyle:

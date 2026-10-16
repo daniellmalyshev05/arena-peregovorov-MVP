@@ -34,6 +34,10 @@
   --color-danger: #a33a2a;
   --color-danger-soft: #f6e9e6;
 
+  /* Настороженность второй стороны: между нейтральным и раздражением. */
+  --color-warn: #8a5d10;
+  --color-warn-soft: #f5ecd9;
+
   --font-sans: 'Golos Text Variable', -apple-system, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, monospace;
 
@@ -211,6 +215,56 @@ body {
   30% { opacity: 1; }
 }
 .typing-dot { animation: typing 1.3s infinite; }
+
+/*
+  Сцена собеседника. Крупная раскладка — только когда на неё хватает и ширины,
+  и высоты: на невысоком ноутбуке лента важнее портрета.
+*/
+@custom-variant stage (@media (min-width: 1280px) and (min-height: 820px));
+
+.mood-irritated { --mood: var(--color-danger); --mood-soft: var(--color-danger-soft); }
+.mood-wary { --mood: var(--color-warn); --mood-soft: var(--color-warn-soft); }
+.mood-neutral { --mood: var(--color-ink2); --mood-soft: var(--color-line2); }
+.mood-warming { --mood: #2f6e4c; --mood-soft: var(--color-accent-soft); }
+.mood-ready { --mood: var(--color-accent); --mood-soft: #d6e8dc; }
+
+/* Кольцо настроя: белый зазор, цветная линия и мягкий ореол. */
+.stage-ring {
+  box-shadow: 0 0 0 3px var(--color-surface), 0 0 0 6px var(--mood), 0 0 0 13px var(--mood-soft);
+  transition: box-shadow 420ms var(--ease-out);
+}
+.stage-ring.stage-ring-sm {
+  box-shadow: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--mood);
+}
+.stage-chip {
+  background: var(--mood-soft);
+  color: var(--mood);
+  transition: background-color 320ms var(--ease-out), color 320ms var(--ease-out);
+}
+
+/* Смена настроя: короткий толчок кольца, чтобы перемену было видно краем глаза. */
+@keyframes mood-pulse {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.045); }
+  100% { transform: scale(1); }
+}
+.mood-pulse { animation: mood-pulse 420ms var(--ease-out); }
+
+/*
+  Раскрытие: плашки, закрывавшие строки, стираются слева направо,
+  и под ними проступает текст.
+*/
+@keyframes redact-out {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+.redact-bar { transform-origin: right; animation: redact-out 520ms var(--ease-out) both; }
+
+@keyframes redact-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.redact-text { animation: redact-in 420ms var(--ease-out) 160ms both; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

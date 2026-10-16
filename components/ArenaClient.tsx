@@ -14,6 +14,7 @@ import { Compare } from './Compare'
 import { DealPanel } from './DealPanel'
 import { Dossier } from './Dossier'
 import { OfferSheet } from './OfferSheet'
+import { OpponentStage } from './OpponentStage'
 import { Portrait } from './Portrait'
 import { decapitalize } from '@/lib/text'
 import { count } from '@/lib/plural'
@@ -661,6 +662,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
 
         {/* Разговор */}
         <div className="flex min-h-0 flex-col bg-surface">
+          <OpponentStage scenario={scenario} state={state} animate={!restored} />
           <div ref={feedRef} className="flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto px-6 pt-[22px] lg:px-10">
             {intro && (
               <div className="line-in rounded-lg border border-line bg-paper px-5 py-4">

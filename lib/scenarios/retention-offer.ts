@@ -235,6 +235,7 @@ export const retentionOffer: Scenario = {
 
   persona: {
     name: 'Денис Воронов',
+    portrait: 'denis-voronov.jpg',
     role: 'ведущий инженер',
     company: 'ваш отдел разработки',
     speechStyle:
