@@ -12,6 +12,7 @@ import { clearSession, loadSession, saveSession } from '@/lib/session'
 import { Debrief } from './Debrief'
 import { Compare } from './Compare'
 import { DealPanel } from './DealPanel'
+import { DealSeal } from './DealSeal'
 import { Dossier } from './Dossier'
 import { OfferSheet } from './OfferSheet'
 import { OpponentStage } from './OpponentStage'
@@ -113,6 +114,8 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
   const [panel, setPanel] = useState<'brief' | 'deal' | null>(null)
   // Переговоры закончились: экран уходит, разбор въезжает.
   const [closing, setClosing] = useState(false)
+  // Сделка зафиксирована: пауза с подписанием перед разбором.
+  const [sealed, setSealed] = useState<{ round: number } | null>(null)
   // Партия поднята из хранилища после перезагрузки — об этом говорим в ленте.
   const [restored, setRestored] = useState(false)
   // Короткий тур по столу: три подсказки при первом входе, дальше по кнопке «?».
@@ -203,6 +206,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
   const finish = useCallback(
     (final: NegotiationState) => {
       clearSession()
+      setSealed(null)
       const report = computeScore(scenario, final)
       setHistory(saveRun(buildRun(scenario, final, report, Boolean(replay))))
       if (replay) {
@@ -280,6 +284,13 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
         const outOfRounds = data.state.round > scenario.maxRounds
         if ((data.state.status === 'deal' || data.verdict === 'accept') && !outOfRounds) {
           setPendingDeal(true)
+        } else if (data.state.status === 'deal') {
+          // Раунды кончились на согласованном пакете — это тоже подписанная сделка.
+          setSealed({ round: data.state.agreedAtRound ?? data.state.round })
+          setTimeout(() => {
+            setClosing(true)
+            setTimeout(() => finish(data.state), 600)
+          }, 1300)
         } else if (data.state.status !== 'active') {
           setClosing(true)
           setTimeout(() => finish(data.state), 900)
@@ -662,7 +673,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
 
         {/* Разговор */}
         <div className="flex min-h-0 flex-col bg-surface">
-          <OpponentStage scenario={scenario} state={state} animate={!restored} />
+          <OpponentStage scenario={scenario} state={state} animate={!restored} adaptation={adaptation} />
           <div ref={feedRef} className="flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto px-6 pt-[22px] lg:px-10">
             {intro && (
               <div className="line-in rounded-lg border border-line bg-paper px-5 py-4">
@@ -675,16 +686,6 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
                       </p>
                     )}
                     <p className="text-small leading-relaxed text-ink2">{scenario.userBrief}</p>
-                    {adaptation.note && (
-                      <p className="mt-2.5 flex items-start gap-2 rounded-md border border-accent-line bg-accent-soft px-3 py-2 text-small leading-relaxed text-ink2">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" strokeWidth="2" strokeLinecap="round" className="mt-0.5 shrink-0" aria-hidden>
-                          <circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" />
-                        </svg>
-                        <span>
-                          Сегодня будет тяжелее: {adaptation.note}.
-                        </span>
-                      </p>
-                    )}
                     <p className="mt-2.5 text-small leading-relaxed text-ink2">
                       Напротив вас {scenario.persona.name}, {scenario.persona.role}.
                       Позиция второй стороны: {decapitalize(scenario.persona.openingPosition)}. Первое
@@ -763,7 +764,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
                       </div>
                       {decided && (
                         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-ink3">
-                          <span className="rounded-sm border border-line px-1.5 py-px text-[11px] font-medium leading-4">посчитано кодом</span>
+                          <span className="rounded-sm border border-line px-1.5 py-px text-[11px] font-medium leading-4">посчитано алгоритмом</span>
                           <span>{VERDICT_RULE[decided]}</span>
                         </div>
                       )}
@@ -845,8 +846,11 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
               const closable = state.status === 'deal'
               const closeDeal = () => {
                 setPendingDeal(false)
-                setClosing(true)
-                setTimeout(() => finish(closable ? state : { ...state, status: 'deal' as const }), 600)
+                setSealed({ round: state.agreedAtRound ?? state.round })
+                setTimeout(() => {
+                  setClosing(true)
+                  setTimeout(() => finish(closable ? state : { ...state, status: 'deal' as const }), 600)
+                }, 1300)
               }
               const resume = () => {
                 setPendingDeal(false)
@@ -1115,6 +1119,8 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
           </div>
         </div>
       )}
+
+      {sealed && <DealSeal round={sealed.round} maxRounds={scenario.maxRounds} />}
 
       {sheet && (
         <OfferSheet

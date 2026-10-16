@@ -266,6 +266,40 @@ body {
 }
 .redact-text { animation: redact-in 420ms var(--ease-out) 160ms both; }
 
+/* Строка «Помнит» появляется после того, как стол собрался. */
+@keyframes memory-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+.memory-in { animation: memory-in 320ms var(--ease-out) 400ms both; }
+
+/* Вердикт по пакету: короткое появление и полоска, которая показывает,
+   сколько карточка ещё пробудет на экране. */
+@keyframes verdict-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+.verdict-in { animation: verdict-in 240ms var(--ease-out) both; }
+
+@keyframes verdict-timer {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+.verdict-timer { transform-origin: left; animation: verdict-timer 3000ms linear both; }
+
+/* Сделка подписана: круг замыкается, галочка дорисовывается следом. */
+@keyframes seal-ring {
+  from { stroke-dashoffset: 264; }
+  to { stroke-dashoffset: 0; }
+}
+.seal-ring { stroke-dasharray: 264; animation: seal-ring 560ms var(--ease-out) 80ms both; }
+
+@keyframes seal-check {
+  from { stroke-dashoffset: 40; }
+  to { stroke-dashoffset: 0; }
+}
+.seal-check { stroke-dasharray: 40; animation: seal-check 320ms var(--ease-out) 520ms both; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

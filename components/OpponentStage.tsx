@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import type { HiddenInterest, NegotiationState, Scenario } from '@/lib/types'
+import { adaptationLevel, adaptationTargets, type Adaptation } from '@/lib/engine/adaptive'
 import { LAYER_LABEL, MOOD_BANDS, MOOD_LABEL, moodBand, xrayCards, type XrayCard } from '@/lib/stage'
 import { Portrait } from './Portrait'
 
@@ -56,6 +57,27 @@ function Redaction({ index, overlay = false }: { index: number; overlay?: boolea
   )
 }
 
+type Verdict = 'accept' | 'counter' | 'reject'
+
+/** Решение по пакету: цвет, знак и слово. Само решение уже принял движок. */
+const VERDICT: Record<Verdict, { title: string; tone: string }> = {
+  accept: { title: 'Согласие', tone: 'bg-accent text-white' },
+  counter: { title: 'Встречное предложение', tone: 'bg-ink text-white' },
+  reject: { title: 'Отказ', tone: 'bg-danger text-white' },
+}
+
+function VerdictGlyph({ verdict }: { verdict: Verdict }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      {verdict === 'accept' && <path d="M5 12.5l4.5 4.5L19 7.5" />}
+      {verdict === 'counter' && <path d="M7 7h11l-3-3M17 17H6l3 3" />}
+      {verdict === 'reject' && <path d="M7 7l10 10M17 7L7 17" />}
+    </svg>
+  )
+}
+
+const LEVEL_DOTS: Record<ReturnType<typeof adaptationLevel>, number> = { нет: 0, заметно: 1, ощутимо: 2, жёстко: 3 }
+
 /**
  * Вторая сторона над лентой: портрет, настрой и то, что она скрывает. На
  * широком экране — сцена «лицом к лицу», на узком — строка.
@@ -67,10 +89,12 @@ export function OpponentStage({
   scenario,
   state,
   animate,
+  adaptation,
 }: {
   scenario: Scenario
   state: NegotiationState
   animate: boolean
+  adaptation: Adaptation
 }) {
   const band = moodBand(state)
   const cards = xrayCards(scenario, state)
@@ -80,7 +104,9 @@ export function OpponentStage({
   const [toast, setToast] = useState<string | null>(null)
   const [pulse, setPulse] = useState(false)
   const [detail, setDetail] = useState<string | null>(null)
+  const [verdict, setVerdict] = useState<{ v: Verdict; key: number } | null>(null)
   const seen = useRef(state.revealedInterests)
+  const turns = useRef(state.transcript.length)
   const lastBand = useRef(band)
   // Таймеры живут отдельно от эффекта: следующий ход меняет состояние раньше,
   // чем плашка успевает уйти, и сброс в эффекте оставил бы её висеть.
@@ -99,6 +125,18 @@ export function OpponentStage({
     timers.current = [setTimeout(() => setFresh([]), 1100), setTimeout(() => setToast(null), 2600)]
   }, [state.revealedInterests, animate, scenario.hiddenInterests])
 
+  // Ответ на пакет: вердикт лежит в ходе игрока перед новой репликой.
+  useEffect(() => {
+    const grew = state.transcript.length > turns.current
+    turns.current = state.transcript.length
+    if (!animate || !grew) return
+    const last = state.transcript[state.transcript.length - 1]
+    const asked = state.transcript[state.transcript.length - 2]
+    if (last?.role !== 'opponent' || asked?.role !== 'user' || !asked.verdict) return
+    setVerdict({ v: asked.verdict, key: last.index })
+    timers.current.push(setTimeout(() => setVerdict(null), 3000))
+  }, [state.transcript, animate])
+
   useEffect(() => {
     if (lastBand.current === band) return
     lastBand.current = band
@@ -113,6 +151,31 @@ export function OpponentStage({
   }, [detail, state.revealedInterests])
 
   const ring = `stage-ring${pulse ? ' mood-pulse' : ''}`
+  const remembered = adaptationTargets(adaptation)
+  const level = adaptationLevel(adaptation)
+
+  // Что вторая сторона вынесла из прошлых сессий. Главная привычка словами,
+  // сила подстройки — точками.
+  const memory = (wrap: boolean) => remembered.length > 0 && (
+    <span
+      title={`Играет жёстче: ${level}`}
+      className={`memory-in inline-flex min-w-0 max-w-full gap-2 bg-warn-soft px-3 py-1 text-caption text-warn ${
+        wrap ? 'items-start rounded-md py-1.5 leading-snug' : 'items-center rounded-full'
+      }`}
+    >
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0">
+        <path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 4v4h4" /><path d="M12 8v4l3 2" />
+      </svg>
+      <span className={`min-w-0 ${wrap ? '' : 'truncate'}`}>
+        <span className="font-semibold">Помнит:</span> {remembered[0].cause}
+      </span>
+      <span aria-label={`Играет жёстче: ${level}`} className={`flex shrink-0 gap-[3px] ${wrap ? 'mt-[5px] ml-auto' : ''}`}>
+        {[0, 1, 2].map((i) => (
+          <span key={i} className={`h-[5px] w-[5px] rounded-full ${i < LEVEL_DOTS[level] ? 'bg-warn' : 'bg-warn/25'}`} />
+        ))}
+      </span>
+    </span>
+  )
   const detailCard = cards.find((c): c is Extract<XrayCard, { open: true }> => c.open && c.id === detail)
 
   const wideCard = (c: XrayCard, index: number) => (
@@ -169,8 +232,9 @@ export function OpponentStage({
     >
       {/* Широкий экран: лицом к лицу, по две карты с каждой стороны. */}
       <div className="hidden px-8 pb-5 pt-4 stage:block">
-        <div className="mb-2.5 flex items-baseline justify-between">
+        <div className="mb-2.5 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4">
           <span className="lbl">Что скрывает</span>
+          <span className="flex min-w-0 justify-center">{memory(false)}</span>
           <span className="num text-caption text-ink3">раскрыто {opened} из {cards.length}</span>
         </div>
         <div className="grid grid-cols-[minmax(0,1fr)_176px_minmax(0,1fr)] items-center gap-5">
@@ -235,6 +299,7 @@ export function OpponentStage({
             ),
           )}
         </div>
+        {remembered.length > 0 && <span className="flex min-w-0">{memory(true)}</span>}
         {detailCard && (
           <p className="rise rounded-md bg-accent-soft px-3 py-2 text-small leading-snug text-ink">
             {detailCard.text}
@@ -242,11 +307,27 @@ export function OpponentStage({
         )}
       </div>
 
-      <div aria-live="polite" className="pointer-events-none absolute inset-x-0 -bottom-4 z-10 flex justify-center">
-        {toast && (
-          <span className="rise rounded-full bg-accent px-3.5 py-1.5 text-caption font-semibold text-white shadow-[0_6px_20px_rgba(26,28,25,0.18)]">
-            {toast}
+      <div aria-live="polite" className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex translate-y-[70%] justify-center px-4">
+        {verdict ? (
+          <span
+            key={verdict.key}
+            className="verdict-in relative flex items-center gap-3 overflow-hidden rounded-lg bg-surface/90 py-2.5 pl-2.5 pr-5 shadow-[0_0_0_1px_rgba(26,28,25,0.06),0_14px_36px_-12px_rgba(26,28,25,0.32)] backdrop-blur-md"
+          >
+            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${VERDICT[verdict.v].tone}`}>
+              <VerdictGlyph verdict={verdict.v} />
+            </span>
+            <span className="flex flex-col">
+              <span className="text-lead font-semibold leading-tight">{VERDICT[verdict.v].title}</span>
+              <span className="text-caption text-ink3">посчитано алгоритмом</span>
+            </span>
+            <span aria-hidden className="verdict-timer absolute inset-x-0 bottom-0 h-[2px] bg-line-strong" />
           </span>
+        ) : (
+          toast && (
+            <span className="rise rounded-full bg-accent px-3.5 py-1.5 text-caption font-semibold text-white shadow-[0_6px_20px_rgba(26,28,25,0.18)]">
+              {toast}
+            </span>
+          )
         )}
       </div>
     </section>
