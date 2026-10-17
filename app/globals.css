@@ -300,6 +300,26 @@ body {
 }
 .seal-check { stroke-dasharray: 40; animation: seal-check 320ms var(--ease-out) 520ms both; }
 
+/* Навык освоен в этой сессии: медаль вспыхивает и расходится кольцом. */
+@keyframes medal-fresh {
+  0% { transform: scale(0.88); }
+  55% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+@keyframes medal-halo {
+  from { opacity: 0.55; transform: scale(1); }
+  to { opacity: 0; transform: scale(1.7); }
+}
+.medal-fresh { animation: medal-fresh 520ms var(--ease-out) 700ms both; }
+.medal-fresh::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  box-shadow: 0 0 0 2px var(--color-accent);
+  animation: medal-halo 700ms var(--ease-out) 800ms both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

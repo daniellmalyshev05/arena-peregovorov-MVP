@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import type { Scenario } from '@/lib/types'
 import { loadRuns, patterns, suggestScenario, type RunRecord } from '@/lib/profile'
 import { loadConfig } from '@/lib/admin/storage'
-import { DIFFICULTY_LABELS } from '@/lib/admin/config'
+import { DIFFICULTY_LABELS, TONES } from '@/lib/admin/config'
 import { count } from '@/lib/plural'
 import { Mark } from './Mark'
 import { Portrait } from './Portrait'
@@ -173,75 +173,97 @@ export function HallView({ scenarios }: { scenarios: Scenario[] }) {
         )}
 
         <section className="mt-14">
-          <div className="flex items-baseline gap-4 border-b border-line pb-2">
+          <div className="flex items-baseline gap-4">
             <h2 className="lbl">Сценарии</h2>
             <span className="lbl ml-auto shrink-0">
               пройдено {passed} из {scenarios.length}
             </span>
           </div>
-          <ul>
+          {/* Люди, с которыми предстоит договориться. Порядок — прогрессия кейсов,
+              поэтому номер остаётся на портрете. Первый кейс — во всю ширину. */}
+          <ul className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
             {scenarios.map((s, i) => {
               const score = best(s.id)
               const isNext = suggested?.id === s.id
               const done = score !== null
-              const first = i === 0
-              const last = i === scenarios.length - 1
+              const featured = i === 0
+              const tone = TONES.find((t) => t.value === s.archetype)?.label
               return (
-                <li key={s.id} className="rise relative border-b border-line/60" style={{ animationDelay: `${60 + i * 60}ms` }}>
-                  {scenarios.length > 1 && (
-                    <span
-                      aria-hidden
-                      className={`absolute left-[13px] w-px bg-line ${
-                        first ? 'bottom-0 top-1/2' : last ? 'top-0 h-1/2' : 'inset-y-0'
-                      }`}
-                    />
-                  )}
+                <li
+                  key={s.id}
+                  className={`rise ${featured ? 'sm:col-span-2' : ''}`}
+                  style={{ animationDelay: `${60 + i * 50}ms` }}
+                >
                   <a
                     href={`/arena/${s.id}`}
-                    className="press group -mx-4 flex flex-wrap items-center gap-x-4 gap-y-3 rounded-md px-4 py-5 hover:bg-rail"
+                    className={`press group flex h-full gap-x-5 gap-y-4 rounded-lg bg-surface p-5 shadow-[inset_0_0_0_1px_var(--color-line)] transition-shadow duration-200 hover:shadow-[inset_0_0_0_1px_var(--color-accent-line),0_12px_30px_-20px_rgba(30,92,65,0.5)] ${
+                      featured ? 'flex-col sm:flex-row sm:items-center sm:p-6' : 'flex-col'
+                    }`}
                   >
-                    <span
-                      aria-hidden
-                      className={`num relative z-10 flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full border text-caption font-semibold transition-colors ${
-                        done
-                          ? 'border-accent bg-accent text-white'
-                          : isNext
-                            ? 'border-accent bg-accent-soft text-accent'
-                            : 'border-line-strong bg-surface text-ink3'
-                      }`}
-                    >
-                      {i + 1}
-                    </span>
-                    <span className="hidden shrink-0 sm:block">
-                      <Portrait name={s.persona.name} file={s.persona.portrait} size={38} active={isNext} />
-                    </span>
-                    <span className="min-w-0 flex-1 basis-[17rem]">
-                      <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-                        <span className="text-title font-medium tracking-[-0.01em] transition-colors group-hover:text-accent">
+                    <span className="flex min-w-0 flex-1 items-start gap-4">
+                      <span className="relative shrink-0">
+                        {featured ? (
+                          <>
+                            <span className="sm:hidden">
+                              <Portrait name={s.persona.name} file={s.persona.portrait} size={64} active={isNext} />
+                            </span>
+                            <span className="hidden sm:block">
+                              <Portrait name={s.persona.name} file={s.persona.portrait} size={96} active={isNext} />
+                            </span>
+                          </>
+                        ) : (
+                          <Portrait name={s.persona.name} file={s.persona.portrait} size={64} active={isNext} />
+                        )}
+                        <span
+                          aria-hidden
+                          className={`num absolute -left-1 -top-1 flex h-[22px] w-[22px] items-center justify-center rounded-full text-caption font-semibold shadow-[0_0_0_2px_var(--color-surface)] ${
+                            done
+                              ? 'bg-accent text-white'
+                              : isNext
+                                ? 'bg-accent-soft text-accent'
+                                : 'bg-line2 text-ink3'
+                          }`}
+                        >
+                          {i + 1}
+                        </span>
+                      </span>
+                      <span className="flex min-w-0 flex-col gap-1">
+                        <span className="text-caption text-ink3">
+                          {s.persona.name} · {s.persona.role}
+                        </span>
+                        <span
+                          className={`font-medium tracking-[-0.01em] text-balance transition-colors group-hover:text-accent ${
+                            featured ? 'text-title sm:text-h2 sm:leading-tight' : 'text-title'
+                          }`}
+                        >
                           {s.title}
                         </span>
-                        {isNext && (
-                          <span className="lbl rounded-sm bg-accent-soft px-1.5 py-0.5 text-accent">рекомендуем</span>
-                        )}
-                        {tuned?.id === s.id && (
-                          <span className="lbl rounded-sm border border-line-strong px-1.5 py-0.5 text-ink3">
-                            настроено · {DIFFICULTY_LABELS[tuned.difficulty]?.toLowerCase() ?? 'сложность изменена'}
-                          </span>
-                        )}
-                      </span>
-                      <span className="mt-1 block text-small text-ink2">
-                        {s.subtitle} · навык: {SKILLS[s.id] ?? 'вести деловые переговоры'}
-                      </span>
-                      <span className="mt-1.5 block text-caption text-ink3 text-pretty">
-                        {s.persona.name} · {s.persona.role}
+                        <span className="mt-0.5 text-small text-ink2 text-pretty">
+                          {s.subtitle} · навык: {SKILLS[s.id] ?? 'вести деловые переговоры'}
+                        </span>
+                        <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          {tone && (
+                            <span className="rounded-full bg-line2 px-2 py-0.5 text-caption text-ink2">{tone}</span>
+                          )}
+                          {isNext && (
+                            <span className="lbl rounded-full bg-accent-soft px-2 py-0.5 text-accent">рекомендуем</span>
+                          )}
+                          {tuned?.id === s.id && (
+                            <span className="lbl rounded-full border border-line-strong px-2 py-0.5 text-ink3">
+                              настроено · {DIFFICULTY_LABELS[tuned.difficulty]?.toLowerCase() ?? 'сложность изменена'}
+                            </span>
+                          )}
+                        </span>
                       </span>
                     </span>
-                    <span className="flex w-full items-center justify-between gap-4 pl-[42px] sm:ml-auto sm:w-auto sm:justify-end sm:pl-0">
-                      {score !== null && (
-                        <span className="shrink-0 text-left sm:text-right">
+                    <span className={`flex items-end justify-between gap-4 ${featured ? 'sm:flex-col sm:items-end sm:justify-center' : 'mt-auto'}`}>
+                      {score !== null ? (
+                        <span className={featured ? 'text-right' : ''}>
                           <span className="mono block text-lead font-semibold leading-none">{score}</span>
                           <span className="lbl mt-1 block">лучший балл</span>
                         </span>
+                      ) : (
+                        <span />
                       )}
                       <span className="flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-line-strong px-3.5 text-caption font-semibold text-ink2 transition-colors group-hover:border-accent group-hover:bg-accent-soft group-hover:text-accent">
                         {score !== null ? 'ещё раз' : 'начать'}

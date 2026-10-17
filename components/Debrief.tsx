@@ -7,9 +7,11 @@ import { concededAt, momentContext, type RewindCandidate } from '@/lib/engine/re
 import { analyze } from '@/lib/engine/utility'
 import { decapitalize, num } from '@/lib/text'
 import { count, plural } from '@/lib/plural'
-import { newlyMastered } from '@/lib/profile'
+import { newlyMastered, skills } from '@/lib/profile'
+import { MOOD_LABEL, moodBand } from '@/lib/stage'
 import { adaptationTargets, computeAdaptation } from '@/lib/engine/adaptive'
 import { Portrait } from './Portrait'
+import { SkillMedal } from './SkillMedal'
 import { SCORE_METHOD, type Method } from '@/lib/techniques'
 import { ArenaMap } from './ArenaMap'
 import type { RunRecord } from '@/lib/profile'
@@ -66,6 +68,41 @@ function useGrown(delay = 120) {
     return () => clearTimeout(id)
   }, [delay])
   return grown
+}
+
+/** Балл кольцом: дуга растёт вместе со счётчиком. */
+function ScoreRing({ value, size = 168 }: { value: number; size?: number }) {
+  const r = size / 2 - 5
+  const c = 2 * Math.PI * r
+  return (
+    <span className="relative flex shrink-0 items-center justify-center" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="absolute inset-0 -rotate-90" aria-hidden>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--color-line2)" strokeWidth="6" />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke="var(--color-accent)"
+          strokeWidth="6"
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - Math.max(0, Math.min(100, value)) / 100)}
+        />
+      </svg>
+      <span className="relative flex flex-col items-center">
+        <span className="mono text-[52px] font-semibold leading-none tracking-[-0.03em]">{value}</span>
+        <span className="lbl mt-1.5">из 100</span>
+      </span>
+    </span>
+  )
+}
+
+/** Чем закончилась партия: та же подпись, что на столе в момент подписания. */
+const OUTCOME = {
+  deal: { label: 'Сделка подписана', tone: 'bg-accent-soft text-accent' },
+  walkaway: { label: 'Выход из переговоров', tone: 'bg-line2 text-ink2' },
+  none: { label: 'Без соглашения', tone: 'bg-line2 text-ink2' },
 }
 
 /**
@@ -197,6 +234,10 @@ export function Debrief({
   })()
   const total = useCountUp(score.total)
   const grown = useGrown()
+  const skillList = skills(history)
+  const masteredCount = skillList.filter((s) => s.status === 'mastered').length
+  const band = moodBand(state)
+  const outcome = OUTCOME[state.status === 'deal' ? 'deal' : state.status === 'walkaway' ? 'walkaway' : 'none']
 
   // Ключевой момент бывает и удачным — красный только там, где действительно ошибка.
   const momentBad = Boolean(
@@ -289,6 +330,26 @@ export function Debrief({
             <div className="stagger">
               <div className="flex flex-wrap items-start justify-between gap-x-14 gap-y-6">
                 <div className="max-w-[760px] flex-1">
+                  {/* Исход и вторая сторона в том виде, в каком их оставила партия. */}
+                  <div className="mb-6 flex flex-wrap items-center gap-x-3 gap-y-2">
+                    <span className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-small font-semibold ${outcome.tone}`}>
+                      {state.status === 'deal' ? (
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="9" /><path d="M8 12.5l2.8 2.8L16 10" /></svg>
+                      ) : state.status === 'walkaway' ? (
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M14 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 16l4-4-4-4M14 12H4" /></svg>
+                      ) : (
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><circle cx="12" cy="12" r="9" /><path d="M8 12h8" /></svg>
+                      )}
+                      {outcome.label}
+                    </span>
+                    <span className={`mood-${band} flex items-center gap-2.5`}>
+                      <span className="stage-ring stage-ring-sm block rounded-full">
+                        <Portrait name={scenario.persona.name} file={scenario.persona.portrait} size={28} />
+                      </span>
+                      <span className="text-small text-ink2">{scenario.persona.name}</span>
+                      <span className="stage-chip whitespace-nowrap rounded-full px-2.5 py-[3px] text-caption font-semibold">{MOOD_LABEL[band]}</span>
+                    </span>
+                  </div>
                   <div className="lbl mb-3">Что получилось</div>
                   <h1 className="text-h1 font-semibold tracking-[-0.018em] text-balance">{score.headline}</h1>
                   <p className="mt-3.5 max-w-[660px] text-lead text-ink2 text-pretty">{score.rootCause}</p>
@@ -300,9 +361,18 @@ export function Debrief({
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
                   </button>
                 </div>
-                <div className="shrink-0 text-right">
-                  <div className="mono text-display font-semibold tracking-[-0.03em]">{total}</div>
-                  <div className="lbl mt-1.5">из 100</div>
+                <div className="flex shrink-0 flex-col items-center gap-5">
+                  <ScoreRing value={total} />
+                  <div className="flex flex-col items-center gap-2.5">
+                    <div className="flex gap-2">
+                      {skillList.map((s) => (
+                        <span key={s.id} title={s.title}>
+                          <SkillMedal id={s.id} status={s.status} size={30} fresh={unlocked.some((u) => u.id === s.id)} />
+                        </span>
+                      ))}
+                    </div>
+                    <span className="lbl">Навыки · освоено {masteredCount} из {skillList.length}</span>
+                  </div>
                 </div>
               </div>
 
@@ -315,7 +385,7 @@ export function Debrief({
                       key={s.id}
                       className="rise flex items-center gap-2 rounded-md border border-accent-line bg-accent-soft px-3.5 py-2 text-small"
                     >
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-accent" aria-hidden><path d="M20 6L9 17l-5-5" /></svg>
+                      <SkillMedal id={s.id} status="mastered" size={22} />
                       <span>
                         <span className="font-semibold text-accent">Навык освоен:</span> {decapitalize(s.title)}
                       </span>

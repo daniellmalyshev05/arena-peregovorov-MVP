@@ -16,7 +16,6 @@ import { DealSeal } from './DealSeal'
 import { Dossier } from './Dossier'
 import { OfferSheet } from './OfferSheet'
 import { OpponentStage } from './OpponentStage'
-import { Portrait } from './Portrait'
 import { decapitalize } from '@/lib/text'
 import { count } from '@/lib/plural'
 import { actTags } from '@/lib/techniques'
@@ -755,8 +754,8 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
                       <span className="reveal-rule h-px flex-1 bg-accent-line" />
                     </div>
                   )}
+                  {/* Лицо второй стороны — на сцене над лентой, в репликах только имя. */}
                   <div className="flex max-w-[660px] gap-3">
-                    <Portrait name={scenario.persona.name} file={scenario.persona.portrait} size={32} active={isLast} />
                     <div className="min-w-0">
                       <div className="mb-1 text-caption text-ink3">{scenario.persona.name}</div>
                       <div className={isLast ? 'text-lead tracking-[-0.005em] text-pretty xl:text-reply' : 'leading-relaxed text-ink2'}>
@@ -787,7 +786,6 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
 
             {busy && (
               <div className="flex items-center gap-3 pl-1">
-                <Portrait name={scenario.persona.name} file={scenario.persona.portrait} size={32} />
                 <span className="flex gap-1">
                   {[0, 1, 2].map((i) => (
                     <span
@@ -802,7 +800,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
 
             {/* Гипотеза одним кликом */}
             {hint && !busy && (
-              <div className="rise ml-11 flex max-w-[600px] flex-wrap items-center gap-x-4 gap-y-2.5 rounded-md border border-line bg-paper px-3.5 py-2.5">
+              <div className="rise flex max-w-[600px] flex-wrap items-center gap-x-4 gap-y-2.5 rounded-md border border-line bg-paper px-3.5 py-2.5">
                 <span className="min-w-[180px] flex-1 text-small">
                   {hint.text}
                   {/* Пояснение к первой гипотезе: оценки дают до 15 баллов из 100. */}
@@ -884,7 +882,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
                 </button>
               )
               return (
-                <div className="rise ml-11 max-w-[600px] rounded-md border border-accent-line bg-accent-soft px-4 py-3.5">
+                <div className="rise max-w-[600px] rounded-md border border-accent-line bg-accent-soft px-4 py-3.5">
                   <p className="text-small leading-snug">
                     {closable ? (
                       <>
@@ -913,7 +911,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
 
             {/* Предложение прозвучало в чате: собрать его пакетом — одно нажатие. */}
             {spokenView && !busy && !pendingDeal && !counterView && (
-              <div className="rise ml-11 max-w-[600px] rounded-md border border-line bg-surface px-4 py-3">
+              <div className="rise max-w-[600px] rounded-md border border-line bg-surface px-4 py-3">
                 <p className="text-small leading-snug text-ink2">
                   Условия из вашей реплики в соглашение не попали: туда идёт только пакет, и решение по нему считает код.
                 </p>
@@ -948,7 +946,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
 
             {/* Встречное предложение: условия посчитаны движком, его можно взять в шторку как есть. */}
             {counterView && !busy && (
-              <div className="rise ml-11 max-w-[600px] rounded-md border border-line bg-surface px-4 py-3">
+              <div className="rise max-w-[600px] rounded-md border border-line bg-surface px-4 py-3">
                 <div className="lbl mb-2">Встречное предложение</div>
                 <div className="flex flex-col">
                   {counterView.rows.map((r) => (

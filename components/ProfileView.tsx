@@ -6,6 +6,7 @@ import { clearRuns, loadRuns, patterns, skills, type RunRecord } from '@/lib/pro
 import { adaptationLevel, adaptationTargets, computeAdaptation, forecastAdaptation } from '@/lib/engine/adaptive'
 import { count, plural } from '@/lib/plural'
 import { num } from '@/lib/text'
+import { SkillMedal } from './SkillMedal'
 
 const SKILL_STATUS: Record<string, string> = {
   untested: 'не проверялся',
@@ -140,8 +141,11 @@ export function ProfileView({ scenarios }: { scenarios: Scenario[] }) {
                 {skillList.map((s) => (
                   <div
                     key={s.id}
-                    className="grid grid-cols-[1fr_auto] items-baseline gap-x-4 gap-y-1 border-b border-line2 py-3 last:border-0"
+                    className="grid grid-cols-[auto_1fr_auto] items-baseline gap-x-4 gap-y-1 border-b border-line2 py-3.5 last:border-0"
                   >
+                    <span className="row-span-2 self-center">
+                      <SkillMedal id={s.id} status={s.status} size={40} />
+                    </span>
                     <span className={`font-semibold ${s.status === 'mastered' ? 'text-accent' : ''}`}>{s.title}</span>
                     <span
                       className={`whitespace-nowrap text-caption ${
@@ -154,7 +158,7 @@ export function ProfileView({ scenarios }: { scenarios: Scenario[] }) {
                     >
                       {SKILL_STATUS[s.status]}
                     </span>
-                    <span className="col-span-2 text-small leading-snug text-ink2">{s.detail}</span>
+                    <span className="col-span-2 col-start-2 text-small leading-snug text-ink2">{s.detail}</span>
                   </div>
                 ))}
               </div>
