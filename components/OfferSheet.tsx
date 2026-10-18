@@ -14,8 +14,9 @@ import { signed } from '@/lib/text'
  * Выигрыш оппонента НЕ показывается: узнать его можно только отправив пакет,
  * иначе игра выдаёт скрытую модель и тренировка теряет смысл.
  *
- * Переход условия между колонками анимирован: пакет собирается на глазах,
- * а кнопка не исчезает из-под курсора рывком.
+ * Строки условий стоят на месте — выбранный вариант не уезжает из-под курсора.
+ * Что отдаём и что получаем, видно в сводке сверху: условие переезжает туда,
+ * как только меняется его уровень.
  */
 export function OfferSheet({
   scenario,
@@ -89,16 +90,36 @@ export function OfferSheet({
   // Формулировка короче восьми знаков не отправляется — показываем подсказку.
   const needsWords = !nothingChanged && text.trim().length < 8
 
-  const picker = (issueId: string) => {
+  const direction = (issueId: string): 'give' | 'get' | 'same' =>
+    groups.give.some((i) => i.id === issueId) ? 'give' : groups.get.some((i) => i.id === issueId) ? 'get' : 'same'
+
+  const row = (issueId: string) => {
     const issue = open.find((i) => i.id === issueId)!
+    const dir = direction(issueId)
     return (
-      <motion.div
+      <div
         key={issue.id}
-        layoutId={`issue-${issue.id}`}
-        layout="position"
-        transition={{ type: 'spring', duration: 0.4, bounce: 0 }}
+        className={`relative grid grid-cols-1 gap-x-6 gap-y-2 border-b border-line2 px-5 py-3.5 transition-colors duration-200 last:border-0 sm:grid-cols-[190px_minmax(0,1fr)] sm:px-[22px] ${
+          dir === 'give' ? 'bg-danger-soft/40' : dir === 'get' ? 'bg-accent-soft/50' : ''
+        }`}
       >
-        <div className="mb-2 text-small">{issue.label}</div>
+        <span
+          aria-hidden
+          className={`absolute inset-y-0 left-0 w-[3px] transition-colors duration-200 ${
+            dir === 'give' ? 'bg-danger' : dir === 'get' ? 'bg-accent' : 'bg-transparent'
+          }`}
+        />
+        <span className="flex items-start gap-2 text-small leading-snug sm:pt-[6px]">
+          {issue.label}
+          {dir !== 'same' && (
+            <span className={`mt-[3px] shrink-0 ${dir === 'give' ? 'text-danger' : 'text-accent'}`}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                {dir === 'give' ? <path d="M12 5v14M6 13l6 6 6-6" /> : <path d="M12 19V5M6 11l6-6 6 6" />}
+              </svg>
+              <span className="sr-only">{dir === 'give' ? 'Отдаём' : 'Получаем взамен'}</span>
+            </span>
+          )}
+        </span>
         <div className="flex flex-wrap gap-[5px]">
           {issue.options.map((o) => {
             const active = draft[issue.id] === o.id
@@ -106,9 +127,10 @@ export function OfferSheet({
               <button
                 key={o.id}
                 onClick={() => setDraft((d) => ({ ...d, [issue.id]: o.id }))}
+                aria-pressed={active}
                 className={`press num flex h-[30px] items-center rounded-sm px-2.5 text-caption ${
                   active
-                    ? 'border-[1.5px] border-accent bg-accent-soft font-semibold text-accent'
+                    ? 'border-[1.5px] border-accent bg-surface font-semibold text-accent'
                     : 'border border-line-strong bg-rail text-ink2 hover:border-accent-line hover:bg-surface hover:text-ink'
                 }`}
               >
@@ -117,7 +139,40 @@ export function OfferSheet({
             )
           })}
         </div>
-      </motion.div>
+      </div>
+    )
+  }
+
+  // Сводка пакета: условие переезжает между «отдаём» и «получаем», строки при этом стоят на месте.
+  const ledger = (kind: 'give' | 'get') => {
+    const items = kind === 'give' ? groups.give : groups.get
+    return (
+      <div className={`min-w-0 px-5 py-3 sm:px-[22px] ${kind === 'give' ? 'border-r border-line2' : ''}`}>
+        <div className={`lbl ${kind === 'give' ? 'text-danger' : 'text-accent'}`}>
+          {kind === 'give' ? 'Отдаём' : 'Получаем взамен'}
+          {items.length > 0 && <span className="num whitespace-nowrap">{'\u00a0'}· {items.length}</span>}
+        </div>
+        <div className="mt-2 flex min-h-[26px] flex-wrap items-center gap-1.5">
+          {items.length ? (
+            items.map((i) => (
+              <motion.span
+                key={i.id}
+                layoutId={`ledger-${i.id}`}
+                transition={{ type: 'spring', duration: 0.35, bounce: 0 }}
+                className={`rounded-sm px-2 py-[3px] text-caption font-medium ${
+                  kind === 'give' ? 'bg-danger-soft text-danger' : 'bg-accent-soft text-accent'
+                }`}
+              >
+                {i.label}
+              </motion.span>
+            ))
+          ) : (
+            <span className="text-caption text-ink3">
+              {kind === 'give' ? 'Пока вы ничего не отдаёте.' : 'Пока вы ничего не просите взамен.'}
+            </span>
+          )}
+        </div>
+      </div>
     )
   }
 
@@ -155,40 +210,12 @@ export function OfferSheet({
 
           <div className="min-h-0 flex-1 overflow-y-auto">
             <LayoutGroup>
-              <div className="grid grid-cols-1 sm:grid-cols-2">
-                <div className="border-r border-line2">
-                  <div className="sticky top-0 z-10 border-b border-line2 bg-surface px-5 py-2.5 sm:px-[22px]">
-                    <div className="lbl text-danger">Отдаём{groups.give.length > 0 && <span className="num"> · {groups.give.length}</span>}</div>
-                  </div>
-                  <div className="flex flex-col gap-[18px] px-5 pb-5 pt-4 sm:px-[22px]">
-                    {groups.give.length ? groups.give.map((i) => picker(i.id)) : (
-                      <p className="text-small text-ink3">Пока вы ничего не отдаёте.</p>
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <div className="sticky top-0 z-10 border-b border-line2 bg-surface px-5 py-2.5 sm:px-[22px]">
-                    <div className="lbl text-accent">Получаем взамен{groups.get.length > 0 && <span className="num"> · {groups.get.length}</span>}</div>
-                  </div>
-                  <div className="flex flex-col gap-[18px] px-5 pb-5 pt-4 sm:px-[22px]">
-                    {groups.get.length ? groups.get.map((i) => picker(i.id)) : (
-                      <p className="text-small text-ink3">Пока вы ничего не просите взамен.</p>
-                    )}
-                  </div>
-                </div>
+              <div className="sticky top-0 z-10 grid grid-cols-2 border-b border-line bg-surface">
+                {ledger('give')}
+                {ledger('get')}
               </div>
-
-              {groups.same.length > 0 && (
-                <div className="border-t border-line2">
-                  <div className="sticky top-0 z-10 border-b border-line2 bg-surface px-5 py-2.5 sm:px-[22px]">
-                    <div className="lbl">Без изменений</div>
-                  </div>
-                  <div className="grid grid-cols-1 gap-x-8 gap-y-[18px] px-5 pb-5 pt-4 sm:grid-cols-2 sm:px-[22px]">
-                    {groups.same.map((i) => picker(i.id))}
-                  </div>
-                </div>
-              )}
             </LayoutGroup>
+            <div>{open.map((i) => row(i.id))}</div>
 
             <div className="border-t border-line2 px-5 pt-4 sm:px-[22px]">
               <div className="lbl mb-2">Как вы это сформулируете</div>
@@ -204,12 +231,11 @@ export function OfferSheet({
 
           <div className="flex shrink-0 flex-wrap items-center gap-x-[22px] gap-y-4 px-5 pb-[18px] pt-4 sm:px-[22px]">
             <div className="min-w-[260px] flex-1">
-              <div className="mb-[6px] flex items-baseline justify-between gap-3">
-                <span className="text-small">Ваш выигрыш к запасному варианту</span>
-                <span className="num whitespace-nowrap text-small font-semibold">
-                  <span className="text-ink3">{signed(pct(before), 0)}%</span>
-                  <span className="text-ink3"> → </span>
-                  <span className={pct(after) < 0 ? 'text-danger' : 'text-accent'}>
+              <div className="mb-2 flex items-end justify-between gap-3">
+                <span className="text-small leading-snug text-ink2">Ваш выигрыш к запасному варианту</span>
+                <span className="flex items-baseline gap-2 whitespace-nowrap">
+                  <span className="num text-small text-ink3">{signed(pct(before), 0)}% →</span>
+                  <span className={`mono text-title font-semibold leading-none ${pct(after) < 0 ? 'text-danger' : 'text-accent'}`}>
                     {signed(pct(after), 0)}%
                   </span>
                 </span>

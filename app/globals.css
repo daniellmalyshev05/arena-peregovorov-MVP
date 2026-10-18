@@ -242,6 +242,39 @@ body {
   transition: background-color 320ms var(--ease-out), color 320ms var(--ease-out);
 }
 
+/* Свет сцены: мягкое пятно цвета настроя за портретом, перетекает при смене настроя. */
+.stage-glow {
+  --glow-x: 9%;
+  background-color: color-mix(in oklab, var(--mood) 13%, var(--color-surface));
+  mask-image: radial-gradient(ellipse 46% 120% at var(--glow-x) 30%, #000 0%, transparent 100%);
+  transition: background-color 700ms var(--ease-out);
+}
+@media (min-width: 1280px) and (min-height: 820px) {
+  .stage-glow {
+    --glow-x: 50%;
+    mask-image: radial-gradient(ellipse 40% 110% at var(--glow-x) 48%, #000 0%, transparent 100%);
+  }
+}
+
+/* Вход в переговоры: портрет, затем слои, затем разговор. Один раз за партию. */
+@keyframes enter-portrait {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: none; }
+}
+.enter-portrait { animation: enter-portrait 420ms var(--ease-out) both; }
+
+@keyframes enter-card {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.enter-card { animation: enter-card 320ms var(--ease-out) both; }
+
+@keyframes enter-feed {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.enter-feed { animation: enter-feed 360ms var(--ease-out) 560ms both; }
+
 /* Свёрнутый факт: последняя строка уходит в бумагу, а не обрывается. */
 .fact-fade {
   mask-image: linear-gradient(to bottom, #000 64%, rgb(0 0 0 / 0.18));

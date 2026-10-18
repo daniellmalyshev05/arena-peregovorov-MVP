@@ -842,7 +842,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
         {/* Разговор */}
         <div className="flex min-h-0 flex-col bg-surface">
           <OpponentStage scenario={scenario} state={state} animate={!restored} adaptation={adaptation} />
-          <div ref={feedRef} className="flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto px-6 pt-[22px] lg:px-10">
+          <div ref={feedRef} className="enter-feed flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto px-6 pt-[22px] lg:px-10">
             {/* Вводная — ремарка перед разговором. После первого хода свёрнута в строку. */}
             <div className="line-in">
               <button
@@ -1138,7 +1138,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
             </button>
           </div>
           <div className="flex min-h-0 flex-1 flex-col">
-            <div className="flex min-h-0 flex-1 flex-col [&>aside]:border-l-0 [&>div]:border-r-0">
+            <div className="flex min-h-0 flex-1 flex-col [&>aside]:flex-1 [&>aside]:border-l-0 [&>div]:flex-1 [&>div]:border-r-0">
               {panel === 'brief' ? briefColumn : renderDeal('flex')}
             </div>
           </div>

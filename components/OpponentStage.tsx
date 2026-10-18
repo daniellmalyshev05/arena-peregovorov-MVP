@@ -71,16 +71,19 @@ function MoodGauge({
   gap,
   stroke,
   halo,
+  empty = false,
   children,
 }: {
   band: ReturnType<typeof moodBand>
+  /** До входа в переговоры шкала пустая и заполняется на глазах. */
+  empty?: boolean
   size: number
   gap: number
   stroke: number
   halo: number
   children: React.ReactNode
 }) {
-  const filled = MOOD_BANDS.indexOf(band) + 1
+  const filled = empty ? 0 : MOOD_BANDS.indexOf(band) + 1
   const r = size / 2 + gap + stroke / 2
   const outer = r + stroke / 2 + halo
   const box = outer * 2
@@ -111,7 +114,7 @@ function MoodGauge({
           )
         })}
       </svg>
-      <span className="absolute" style={{ inset: outer - size / 2 }}>
+      <span className="enter-portrait absolute" style={{ inset: outer - size / 2 }}>
         {children}
       </span>
     </span>
@@ -164,6 +167,8 @@ export function OpponentStage({
   const [fresh, setFresh] = useState<string[]>([])
   const [detail, setDetail] = useState<string | null>(null)
   const [verdict, setVerdict] = useState<{ v: Verdict; key: number } | null>(null)
+  // Вход в переговоры: шкала настроя заполняется после того, как сцена собралась.
+  const [entered, setEntered] = useState(false)
   const seen = useRef(state.revealedInterests)
   const turns = useRef(state.transcript.length)
   // Таймеры живут отдельно от эффекта: следующий ход меняет состояние раньше,
@@ -171,6 +176,11 @@ export function OpponentStage({
   const timers = useRef<ReturnType<typeof setTimeout>[]>([])
 
   useEffect(() => () => timers.current.forEach(clearTimeout), [])
+
+  useEffect(() => {
+    const t = setTimeout(() => setEntered(true), 180)
+    return () => clearTimeout(t)
+  }, [])
 
   useEffect(() => {
     const added = state.revealedInterests.filter((id) => !seen.current.includes(id))
@@ -231,10 +241,11 @@ export function OpponentStage({
     <div
       key={c.id}
       title={c.open ? c.text : undefined}
-      className={`h-[104px] rounded-lg px-3.5 py-3 transition-[background-color,box-shadow] duration-300 ${
+      style={{ animationDelay: `${260 + index * 70}ms` }}
+      className={`enter-card h-[104px] rounded-lg px-3.5 py-3 transition-[background-color,box-shadow] duration-300 ${
         c.open
           ? 'bg-surface shadow-[inset_0_0_0_1px_var(--color-accent-line),0_10px_26px_-14px_rgba(30,92,65,0.5)]'
-          : 'bg-paper shadow-[inset_0_0_0_1px_var(--color-line2)]'
+          : 'bg-paper/80 shadow-[inset_0_0_0_1px_var(--color-line2)]'
       }`}
     >
       <span className={`flex items-center gap-1.5 text-caption font-semibold ${c.open ? 'text-accent' : 'text-ink3'}`}>
@@ -268,8 +279,10 @@ export function OpponentStage({
       aria-label={`${scenario.persona.name}, ${scenario.persona.role}`}
       className={`mood-${band} relative shrink-0 border-b border-line bg-surface`}
     >
+      {/* Сцена окрашена настроем второй стороны: атмосферу видно, не читая подписей. */}
+      <span aria-hidden className="stage-glow pointer-events-none absolute inset-0" />
       {/* Широкий экран: лицом к лицу, по две карты с каждой стороны. */}
-      <div className="hidden px-8 pb-5 pt-4 stage:block">
+      <div className="relative hidden px-8 pb-5 pt-4 stage:block">
         <div className="mb-2.5 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4">
           <span className="lbl">Что скрывает</span>
           <span className="flex min-w-0 justify-center">{memory(false)}</span>
@@ -278,7 +291,7 @@ export function OpponentStage({
         <div className="grid grid-cols-[minmax(0,1fr)_176px_minmax(0,1fr)] items-center gap-5">
           <div className="grid gap-2">{cards.slice(0, 2).map((c, i) => wideCard(c, i))}</div>
           <div className="flex flex-col items-center gap-1.5 text-center">
-            <MoodGauge band={band} size={104} gap={4} stroke={5} halo={6}>
+            <MoodGauge band={band} size={104} gap={4} stroke={5} halo={6} empty={!entered}>
               <Portrait name={scenario.persona.name} file={scenario.persona.portrait} size={104} />
             </MoodGauge>
             <span className="flex flex-col">
@@ -292,9 +305,9 @@ export function OpponentStage({
       </div>
 
       {/* Узкий или невысокий экран: строка и четыре карты в ряд. */}
-      <div className="flex flex-col gap-2.5 px-4 py-3 stage:hidden lg:px-10">
+      <div className="relative flex flex-col gap-2.5 px-4 py-3 stage:hidden lg:px-10">
         <div className="flex items-center gap-3">
-          <MoodGauge band={band} size={42} gap={3} stroke={3} halo={0}>
+          <MoodGauge band={band} size={42} gap={3} stroke={3} halo={0} empty={!entered}>
             <Portrait name={scenario.persona.name} file={scenario.persona.portrait} size={42} />
           </MoodGauge>
           <span className="flex min-w-0 flex-col">
@@ -303,7 +316,7 @@ export function OpponentStage({
           </span>
           <span className="ml-auto flex shrink-0">{chip}</span>
         </div>
-        <div className="grid grid-cols-4 gap-1.5">
+        <div className="enter-card grid grid-cols-4 gap-1.5" style={{ animationDelay: '220ms' }}>
           {cards.map((c) =>
             c.open ? (
               <button
@@ -323,11 +336,11 @@ export function OpponentStage({
             ) : (
               <div
                 key={c.id}
-                className="flex h-12 min-w-0 flex-col items-center justify-center gap-[3px] rounded-md bg-rail px-0.5 text-label font-semibold leading-none text-ink2 sm:text-caption"
+                className="flex h-12 min-w-0 flex-col items-center justify-center gap-[3px] rounded-md bg-paper/80 px-0.5 text-label font-semibold leading-none text-ink3 shadow-[inset_0_0_0_1px_var(--color-line2)] sm:text-caption"
               >
                 <span className="text-ink3"><LayerGlyph kind={c.kind} size={13} /></span>
                 <span className="max-w-full truncate">{c.layer}</span>
-                <span aria-hidden className="h-1 w-7 rounded-full bg-ink-faint" />
+                <span aria-hidden className="h-1 w-7 rounded-full bg-line-strong" />
                 <span className="sr-only">, не раскрыто</span>
               </div>
             ),
