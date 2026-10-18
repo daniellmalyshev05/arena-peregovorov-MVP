@@ -58,6 +58,66 @@ const PENALTIES = [
   { label: 'Предложение до выяснения интересов', points: '−6' },
 ]
 
+
+/**
+ * Один ход партии — кто за что отвечает. Решение по пакету принимает код
+ * до обращения к модели, модель только говорит его словами.
+ */
+const TURN = [
+  { actor: 'Вы', tone: 'you', title: 'Ход', detail: 'Реплика своими словами, пакет условий или факт к ответу.' },
+  {
+    actor: 'Движок',
+    tone: 'code',
+    title: 'Решение',
+    detail: 'До обращения к модели алгоритм считает выгоду пакета для обеих сторон и решает: согласие, встречное или отказ.',
+  },
+  {
+    actor: 'Модель',
+    tone: 'model',
+    title: 'Реплика',
+    detail: 'Модель получает решение готовым и говорит его голосом второй стороны: характер, интонация, реакция.',
+  },
+  {
+    actor: 'Движок',
+    tone: 'code',
+    title: 'Счёт',
+    detail: 'Движок по правилам обновляет соглашение, настрой второй стороны и раскрытые интересы. Баллы в разборе считает тоже он.',
+  },
+] as const
+
+const ACTOR_TONE = {
+  you: 'bg-line2 text-ink2',
+  code: 'bg-accent-soft text-accent',
+  model: 'bg-warn-soft text-warn',
+} as const
+
+function TurnArrow({ sealed = false }: { sealed?: boolean }) {
+  return (
+    <div aria-hidden className="flex items-center justify-center py-1 md:py-0">
+      <div className="flex flex-col items-center gap-1.5 md:flex-row">
+        {sealed && (
+          <span className="order-last flex items-center gap-1 rounded-full border border-accent-line bg-surface px-2 py-0.5 text-label font-semibold text-accent md:order-none md:hidden">
+            <LockGlyph />
+            решение
+          </span>
+        )}
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="rotate-90 text-ink-faint md:rotate-0">
+          <path d="M5 12h14M13 6l6 6-6 6" />
+        </svg>
+      </div>
+    </div>
+  )
+}
+
+function LockGlyph() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </svg>
+  )
+}
+
 export function HowView() {
   return (
     <main className="min-h-dvh bg-paper">
@@ -81,6 +141,64 @@ export function HowView() {
           запасной вариант. Поэтому исход партии можно посчитать точно: кто сколько получил, сколько
           ценности вы создали вместе и сколько осталось лежать на столе.
         </p>
+
+        {/* Главное различие продукта — первым разделом и схемой одного хода. */}
+        <section className="mt-12 border-t border-line pt-9">
+          <h2 className="text-h2 font-semibold tracking-[-0.016em]">Что считает код, а что — модель</h2>
+
+          <ol className="mt-7 grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_28px_minmax(0,1fr)_28px_minmax(0,1fr)_28px_minmax(0,1fr)]">
+            {TURN.map((step, i) => (
+              <li key={step.title} className="contents">
+                {i > 0 && <TurnArrow sealed={i === 2} />}
+                <div
+                  className={`enter-card relative flex flex-col rounded-lg bg-surface p-4 ${
+                    step.tone === 'code'
+                      ? 'shadow-[inset_0_0_0_1px_var(--color-accent-line),0_14px_30px_-22px_rgba(30,92,65,0.55)]'
+                      : 'shadow-[inset_0_0_0_1px_var(--color-line)]'
+                  }`}
+                  style={{ animationDelay: `${80 + i * 90}ms` }}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`rounded-full px-2.5 py-0.5 text-caption font-semibold ${ACTOR_TONE[step.tone]}`}>
+                      {step.actor}
+                    </span>
+                    <span className="mono text-caption text-ink-faint">{i + 1}</span>
+                  </div>
+                  <h3 className="mt-3 text-lead font-semibold">{step.title}</h3>
+                  <p className="mt-1 text-small leading-snug text-ink2 text-pretty">{step.detail}</p>
+                  {i === 1 && (
+                    <span className="mt-3 hidden items-center gap-1 self-start rounded-full border border-accent-line bg-accent-soft px-2 py-0.5 text-label font-semibold text-accent md:inline-flex">
+                      <LockGlyph />
+                      решение
+                    </span>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ol>
+
+          <p className="mt-4 flex gap-2.5 rounded-md bg-surface px-4 py-3 text-small leading-snug text-ink2 shadow-[inset_0_0_0_1px_var(--color-line2)]">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="mt-px shrink-0 text-accent">
+              <path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6z" />
+              <path d="M9 12l2 2 4-4" />
+            </svg>
+            <span>
+              Реплику модели проверяет код: согласие без решения алгоритма не пройдёт, а проговорённый
+              скрытый интерес засчитается вам как раскрытый.
+            </span>
+          </p>
+
+          <p className="mt-6 max-w-[660px] leading-relaxed text-ink2 text-pretty">
+            Языковая модель играет человека напротив: держит характер, формулирует реплики, решает,
+            что сказать в ответ. Она не ставит баллы и не решает, принято ли предложение. Выгодность
+            пакета для второй стороны считается кодом до обращения к модели и уходит ей как данность —
+            поэтому результат нельзя выговорить, его можно только выторговать.
+          </p>
+          <p className="mt-3 max-w-[660px] leading-relaxed text-ink2 text-pretty">
+            Если модель почему-то не ответила, ход подхватывает движок на правилах, и в интерфейсе
+            это видно прямой пометкой. Молчаливой подмены нет.
+          </p>
+        </section>
 
         <section className="mt-12 border-t border-line pt-9">
           <h2 className="text-h2 font-semibold tracking-[-0.016em]">На чём это построено</h2>
@@ -137,20 +255,6 @@ export function HowView() {
               </div>
             ))}
           </dl>
-        </section>
-
-        <section className="mt-12 border-t border-line pt-9">
-          <h2 className="text-h2 font-semibold tracking-[-0.016em]">Что считает код, а что — модель</h2>
-          <p className="mt-2.5 max-w-[660px] leading-relaxed text-ink2 text-pretty">
-            Языковая модель играет человека напротив: держит характер, формулирует реплики, решает,
-            что сказать в ответ. Она не ставит баллы и не решает, принято ли предложение. Выгодность
-            пакета для второй стороны считается кодом до обращения к модели и уходит ей как данность —
-            поэтому результат нельзя выговорить, его можно только выторговать.
-          </p>
-          <p className="mt-3 max-w-[660px] leading-relaxed text-ink2 text-pretty">
-            Если модель почему-то не ответила, ход подхватывает движок на правилах, и в интерфейсе
-            это видно прямой пометкой. Молчаливой подмены нет.
-          </p>
         </section>
 
         <div className="mt-12 flex flex-wrap items-center gap-x-4 gap-y-3 border-t border-line pt-9">
