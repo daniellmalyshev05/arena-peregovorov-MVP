@@ -266,10 +266,15 @@ function diagnose(
 
   if (state.status === 'timeout') {
     const untouched = scenario.issues.filter((i) => !state.visibleIssues.includes(i.id)).length
+    // Пакет отправлялся, но согласия на него не было: разговор до предложения дошёл.
+    const offered = state.transcript.some((t) => t.role === 'user' && t.verdict)
+    const accepted = state.transcript.some((t) => t.role === 'user' && t.verdict === 'accept')
     return {
       // Исход один, причина разная: раунды кончились сами или игрок закончил разговор.
       headline: state.endedEarly ? 'Вы закончили разговор без соглашения' : 'Раунды закончились, соглашения нет',
-      rootCause: untouched
+      rootCause: offered && !accepted
+        ? 'Пакет вы предлагали, но ни один вторая сторона не приняла — соглашения нет.'
+        : untouched
         ? `Разговор не дошёл до предложения. ${untouched} из ${scenario.issues.length} условий вы так и не вывели в обсуждение — торговаться было нечем.`
         : 'Условия вы открыли, но так и не собрали из них пакет. Соглашение не появляется само из разговора: его нужно предложить.',
     }

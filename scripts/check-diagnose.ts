@@ -85,5 +85,33 @@ console.log('Главный вывод разбора\n')
   }
 }
 
+// 6. Пакет отправлялся и получил отказ, партию закончили без соглашения.
+{
+  const opening = createInitialState(s).transcript
+  const offered = (visible: string[]) =>
+    score(
+      s,
+      state({
+        status: 'timeout',
+        endedEarly: true,
+        deal: initialDeal(s),
+        visibleIssues: visible,
+        transcript: [
+          ...opening,
+          { index: opening.length, role: 'user', text: 'пакет', acts: ['conditional_offer'], dealChanges: [], revealed: [], verdict: 'reject', timestamp: 0 },
+        ],
+      }),
+    )
+  const some = offered(s.issues.slice(0, 2).map((i) => i.id))
+  const all = offered(s.issues.map((i) => i.id))
+  for (const r of [some, all]) {
+    check(r.headline === 'Вы закончили разговор без соглашения', 'заголовок досрочного конца без соглашения')
+    check(r.rootCause.startsWith('Пакет вы предлагали'), 'отправленный пакет не выдаётся за разговор без предложения')
+    check(!r.rootCause.includes('не дошёл до предложения') && !r.rootCause.includes('не собрали из них пакет'), 'причина не противоречит отправленному пакету')
+  }
+  const silent = score(s, state({ status: 'timeout', deal: initialDeal(s), visibleIssues: s.issues.slice(0, 2).map((i) => i.id) }))
+  check(silent.rootCause.startsWith('Разговор не дошёл до предложения'), 'без пакета причина прежняя')
+}
+
 console.log(failed === 0 ? '\n✓ заголовок разбора верен во всех исходах' : `\n${failed} провалов`)
 process.exit(failed === 0 ? 0 : 1)
