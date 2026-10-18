@@ -1,15 +1,45 @@
 'use client'
 
+import { useEffect, useRef, useState } from 'react'
 import type { NegotiationState, Scenario } from '@/lib/types'
 import { optionOf, utility } from '@/lib/engine/utility'
 import { count } from '@/lib/plural'
 import { signed } from '@/lib/text'
 
+/** Число доезжает до нового значения, а не меняется рывком. */
+function useRolling(value: number, duration = 420) {
+  const [shown, setShown] = useState(value)
+  const from = useRef(value)
+  useEffect(() => {
+    const start = from.current
+    if (start === value) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      from.current = value
+      setShown(value)
+      return
+    }
+    const t0 = performance.now()
+    let raf = 0
+    const tick = (now: number) => {
+      const k = Math.min(1, (now - t0) / duration)
+      const eased = 1 - Math.pow(1 - k, 3)
+      const v = Math.round(start + (value - start) * eased)
+      from.current = v
+      setShown(v)
+      if (k < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [value, duration])
+  return shown
+}
+
 /**
  * Правая колонка: проект соглашения.
  *
- * Показывает открытые условия и число ещё не выведенных в разговор. Названия
- * неоткрытых условий скрыты: иначе панель подсказывает, о чём спрашивать.
+ * Открытые условия идут строками, неоткрытые — пустыми ячейками на своих
+ * местах. Названия неоткрытых условий скрыты: иначе панель подсказывает,
+ * о чём спрашивать.
  */
 export function DealPanel({
   scenario,
@@ -18,7 +48,6 @@ export function DealPanel({
   newIssues,
   tab,
   onTab,
-  onCompose,
   className = '',
   children,
 }: {
@@ -28,7 +57,6 @@ export function DealPanel({
   newIssues: string[]
   tab: 'deal' | 'dossier'
   onTab: (t: 'deal' | 'dossier') => void
-  onCompose: () => void
   className?: string
   children?: React.ReactNode
 }) {
@@ -39,6 +67,7 @@ export function DealPanel({
   const u = utility(scenario, state.deal, 'user')
   const batna = scenario.userBatna.value
   const gainPct = Math.round(((u - batna) / batna) * 100)
+  const shownPct = useRolling(gainPct)
   const fill = Math.max(2, Math.min(100, ((u - batna + 22) / 55) * 100))
   const zeroAt = (22 / 55) * 100
 
@@ -100,7 +129,13 @@ export function DealPanel({
             const open = state.visibleIssues.includes(issue.id)
             const isNew = newIssues.includes(issue.id)
 
-            if (!open) return null
+            if (!open) {
+              return (
+                <div key={issue.id} aria-hidden className="border-b border-line2 px-4 py-2 lg:px-[18px]">
+                  <div className="h-[30px] rounded-sm border border-dashed border-line-strong/80" />
+                </div>
+              )
+            }
 
             const current = optionOf(issue, state.deal[issue.id])
             const prevId = previousDeal[issue.id]
@@ -131,28 +166,24 @@ export function DealPanel({
           })}
 
           {hidden > 0 && (
-            <div className="grid grid-cols-[1fr_auto] items-baseline gap-3 border-b border-line2 px-4 py-3 lg:px-[18px]">
-              <span className="text-small text-ink3">Ещё не на столе</span>
-              <span className="num whitespace-nowrap border-b border-dashed border-line-strong text-caption text-ink3">
-                {count(hidden, ['условие', 'условия', 'условий'])}
-              </span>
-            </div>
+            <p className="sr-only">
+              Ещё не на столе: {count(hidden, ['условие', 'условия', 'условий'])}. Новые условия появляются здесь, когда вы выводите их в разговор.
+            </p>
           )}
-
-          <p className="px-4 py-[14px] text-caption leading-snug text-ink3 lg:px-[18px]">
-            Новые условия появляются здесь, когда вы выводите их в разговор.
-          </p>
         </div>
       )}
 
       <div className="shrink-0 border-t border-line px-4 pb-[18px] pt-4 lg:px-[18px]">
-        <div className="mb-[6px] flex items-baseline justify-between gap-3">
-          <span className="text-small">Ваш выигрыш к запасному варианту</span>
-          <span className={`num text-small font-semibold ${gainPct < 0 ? 'text-danger' : 'text-accent'}`}>
-            {signed(gainPct, 0)}%
+        <div className="mb-2.5 flex items-end justify-between gap-3">
+          <span className="max-w-[170px] text-small leading-snug text-ink2">Ваш выигрыш к запасному варианту</span>
+          <span
+            aria-label={`${signed(gainPct, 0)}%`}
+            className={`mono text-h2 font-semibold leading-none tracking-[-0.02em] transition-colors duration-300 ${gainPct < 0 ? 'text-danger' : 'text-accent'}`}
+          >
+            {signed(shownPct, 0)}%
           </span>
         </div>
-        <div className="relative h-[5px] overflow-hidden rounded-full bg-line2">
+        <div className="relative h-[6px] overflow-hidden rounded-full bg-line2">
           <div
             className={`absolute inset-y-0 left-0 rounded-full transition-[width] duration-500 ease-[cubic-bezier(0.2,0,0,1)] ${
               gainPct < 0 ? 'bg-danger' : 'bg-accent'
@@ -175,17 +206,6 @@ export function DealPanel({
               'repeating-linear-gradient(115deg, var(--color-line2) 0 5px, var(--color-paper) 5px 10px)',
           }}
         />
-
-        <button
-          onClick={onCompose}
-          disabled={state.visibleIssues.length < 2 || state.status !== 'active'}
-          className="press mt-[14px] flex h-[42px] w-full items-center justify-center gap-2 rounded-md border border-accent bg-surface font-semibold text-accent hover:bg-accent-soft disabled:border-line disabled:text-ink3 disabled:hover:bg-surface"
-        >
-          Собрать предложение
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M5 12h14M13 6l6 6-6 6" />
-          </svg>
-        </button>
       </div>
     </aside>
   )

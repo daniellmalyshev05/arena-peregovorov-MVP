@@ -16,6 +16,7 @@ import { DealSeal } from './DealSeal'
 import { Dossier } from './Dossier'
 import { OfferSheet } from './OfferSheet'
 import { OpponentStage } from './OpponentStage'
+import { FactRow } from './FactRow'
 import { decapitalize } from '@/lib/text'
 import { count } from '@/lib/plural'
 import { actTags } from '@/lib/techniques'
@@ -38,7 +39,7 @@ const TOUR = [
   {
     title: 'Соглашение и пакет',
     detail:
-      'Справа — проект соглашения и кнопка «Собрать предложение» (на телефоне — кнопка «Соглашение»). Пакет уходит целиком: вторая сторона отвечает на него одним решением. Условия, названные только в чате, в соглашение не попадают.',
+      'Справа — проект соглашения (на телефоне — кнопка «Соглашение»). Пакет собирается кнопкой «Собрать предложение» у поля ввода и уходит целиком: вторая сторона отвечает на него одним решением. Условия, названные только в чате, в соглашение не попадают.',
   },
 ]
 
@@ -98,9 +99,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
   const [tab, setTab] = useState<'deal' | 'dossier'>('deal')
   const [sheet, setSheet] = useState(false)
   const [pendingFact, setPendingFact] = useState<string | undefined>()
-  const [confirmExit, setConfirmExit] = useState(false)
-  const [confirmEnd, setConfirmEnd] = useState(false)
-  // Завершение партии на телефоне живёт в шапке: в рельсе его не найти.
+  // Завершение партии живёт в меню шапки.
   const [menu, setMenu] = useState<'closed' | 'root' | 'end' | 'exit'>('closed')
   // Вторая сторона согласилась: ждём решения игрока — фиксировать или продолжать.
   const [pendingDeal, setPendingDeal] = useState(false)
@@ -198,9 +197,19 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
     else clearSession()
   }, [lastOffer, pendingDeal, phase, replay, signature, snapshots, state])
 
+  // Карточка над полем ввода меняет высоту ленты — последняя реплика остаётся на виду.
   useEffect(() => {
     feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: 'smooth' })
-  }, [state.transcript.length, busy, pending])
+  }, [state.transcript.length, busy, pending, pendingDeal, hint, pendingFact])
+
+  useEffect(() => {
+    if (menu === 'closed') return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenu('closed')
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [menu])
 
   const finish = useCallback(
     (final: NegotiationState) => {
@@ -389,7 +398,6 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
       newIssues={newIssues}
       tab={tab}
       onTab={setTab}
-      onCompose={() => setSheet(true)}
       className={className}
     >
       <Dossier scenario={scenario} state={state} onSetConfidence={setConfidence} />
@@ -432,105 +440,251 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
             Факты · осталось {hand.filter((f) => !state.playedFacts.includes(f.id)).length}
           </div>
           <div className="flex flex-col gap-2">
-            {hand.map((f) => {
-              const used = state.playedFacts.includes(f.id)
-              const armed = pendingFact === f.id
-              return (
-                <button
-                  key={f.id}
-                  disabled={used || state.status !== 'active'}
-                  onClick={() => setPendingFact(armed ? undefined : f.id)}
-                  className={`press rounded-md border px-3 py-[11px] text-left ${
-                    used
-                      ? 'border-line bg-transparent opacity-45'
-                      : armed
-                        ? 'border-accent bg-accent-soft shadow-[0_1px_2px_rgba(26,28,25,0.04)]'
-                        : 'border-line bg-surface hover:border-accent-line'
-                  }`}
-                >
-                  <div className="mb-2 text-small leading-snug">{f.detail}</div>
-                  <div className={`text-caption font-semibold ${used ? 'text-ink3' : 'text-accent'}`}>
-                    {used ? 'уже использован' : armed ? 'приложен к ответу' : 'Приложить к ответу'}
-                  </div>
-                </button>
-              )
-            })}
+            {hand.map((f) => (
+              <FactRow
+                key={f.id}
+                text={f.detail}
+                used={state.playedFacts.includes(f.id)}
+                armed={pendingFact === f.id}
+                disabled={state.status !== 'active'}
+                onToggle={() => setPendingFact(pendingFact === f.id ? undefined : f.id)}
+              />
+            ))}
           </div>
         </div>
       </div>
-
-      <div className="shrink-0 border-t border-line/70 p-4 lg:p-[18px] lg:pt-4">
-        {confirmEnd ? (
-          <div className="rise rounded-md border border-accent-line bg-accent-soft p-3">
-            <p className="text-small leading-snug text-ink2">
-              {state.agreedAtRound
-                ? 'Закончить на том, о чём договорились? Разбор посчитает результат по текущему соглашению.'
-                : 'Закончить без соглашения? Итогом станет ваш запасной вариант — по нему и посчитается результат.'}
-            </p>
-            <div className="mt-3 flex gap-2">
-              <button
-                onClick={() => {
-                  setConfirmEnd(false)
-                  leave('end')
-                }}
-                className="press h-11 flex-1 rounded-md bg-accent text-caption font-semibold text-white hover:bg-accent/92 md:h-9"
-              >
-                Закончить
-              </button>
-              <button
-                onClick={() => setConfirmEnd(false)}
-                className="press h-11 flex-1 rounded-md border border-line bg-surface text-caption text-ink2 hover:border-ink3 md:h-9"
-              >
-                Вернуться
-              </button>
-            </div>
-          </div>
-        ) : confirmExit ? (
-          <div className="rise rounded-md border border-danger/40 bg-surface p-3">
-            <p className="text-small leading-snug text-ink2">
-              Выйти из переговоров без сделки? Если сделка оказалась бы хуже вашего запасного варианта, выход — правильное решение.
-            </p>
-            <div className="mt-3 flex gap-2">
-              <button
-                onClick={() => {
-                  setConfirmExit(false)
-                  leave('exit')
-                }}
-                className="press h-11 flex-1 rounded-md bg-danger text-caption font-semibold text-white md:h-9"
-              >
-                Выйти
-              </button>
-              <button
-                onClick={() => setConfirmExit(false)}
-                className="press h-11 flex-1 rounded-md border border-line text-caption text-ink2 hover:border-ink3 md:h-9"
-              >
-                Остаться
-              </button>
-            </div>
-          </div>
-        ) : (
-          /* Две разные кнопки: закончить партию (путь к разбору) и выйти
-             из переговоров (переговорный ход). */
-          <div className="flex flex-col gap-1.5">
-            <button
-              onClick={() => setConfirmEnd(true)}
-              disabled={busy || state.status !== 'active'}
-              className="press h-11 w-full shrink-0 rounded-md border border-accent-line bg-surface text-small font-semibold text-accent hover:bg-accent-soft disabled:opacity-40 md:h-9"
-            >
-              Закончить и посмотреть разбор
-            </button>
-            <button
-              onClick={() => setConfirmExit(true)}
-              disabled={busy || state.status !== 'active'}
-              className="press h-11 w-full shrink-0 rounded-md text-small text-ink3 hover:text-danger disabled:opacity-40 md:h-9"
-            >
-              Выйти из переговоров
-            </button>
-          </div>
-        )}
-      </div>
     </div>
   )
+
+  const armedFact = pendingFact ? hand.find((f) => f.id === pendingFact) : undefined
+
+  // Над полем ввода — одна карточка: то, что можно сделать прямо сейчас.
+  // Ошибка связи важнее всего, дальше решение по сделке, ответ на пакет,
+  // условия из реплики, гипотеза и подсказки первого хода.
+  const trayKind: 'error' | 'deal' | 'counter' | 'spoken' | 'hint' | 'openers' | null = busy
+    ? null
+    : hint && !hint.probeId
+      ? 'error'
+      : pendingDeal
+        ? 'deal'
+        : counterView
+          ? 'counter'
+          : spokenView
+            ? 'spoken'
+            : hint
+              ? 'hint'
+              : openers.length > 0 && state.round === 1 && !text && state.status === 'active'
+                ? 'openers'
+                : null
+
+  const termRows = (rows: { label: string; from: string; to: string }[]) => (
+    <div className="flex flex-col">
+      {rows.map((r) => (
+        <div
+          key={r.label}
+          className="flex flex-col gap-0.5 border-b border-line2 py-[7px] last:border-0 sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,auto)] sm:items-baseline sm:gap-3"
+        >
+          <span className="text-small text-ink2">{r.label}</span>
+          <span className="num flex flex-wrap items-baseline gap-x-[7px] text-small sm:justify-end sm:text-right">
+            <span className="text-ink3 line-through decoration-line-strong">{r.from}</span>
+            <span className="font-semibold">{r.to}</span>
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+
+  const arrow = (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+  )
+
+  const renderTray = () => {
+    if (trayKind === 'error' && hint) {
+      return (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <span className="min-w-[180px] flex-1 text-small">{hint.text}</span>
+          <button onClick={() => setHint(null)} className="press ml-auto whitespace-nowrap text-caption text-ink3 hover:text-ink">
+            Понятно
+          </button>
+        </div>
+      )
+    }
+
+    // Согласие получено: закрыть сделку или торговаться дальше — решает игрок.
+    // Если стол закрыт не полностью, показываем, сколько условий не хватает,
+    // и даём закрыться как есть.
+    if (trayKind === 'deal') {
+      const settle = settlement(scenario, state)
+      const closable = state.status === 'deal'
+      const closeDeal = () => {
+        setPendingDeal(false)
+        setSealed({ round: state.agreedAtRound ?? state.round })
+        setTimeout(() => {
+          setClosing(true)
+          setTimeout(() => finish(closable ? state : { ...state, status: 'deal' as const }), 600)
+        }, 1300)
+      }
+      const resume = () => {
+        setPendingDeal(false)
+        setState((s) => ({ ...s, status: 'active' }))
+        inputRef.current?.focus()
+      }
+      const close = (
+        <button
+          key="close"
+          onClick={closeDeal}
+          className={
+            closable
+              ? 'press flex h-9 items-center rounded-md bg-accent px-4 text-caption font-semibold text-white hover:bg-accent/92'
+              : 'press flex h-9 items-center rounded-md border border-line bg-surface px-4 text-caption text-ink2 hover:border-accent hover:text-accent'
+          }
+        >
+          {closable ? 'Зафиксировать сделку' : 'Зафиксировать как есть'}
+        </button>
+      )
+      const more = (
+        <button
+          key="more"
+          onClick={resume}
+          className={
+            closable
+              ? 'press flex h-9 items-center rounded-md border border-line bg-surface px-4 text-caption text-ink2 hover:border-accent hover:text-accent'
+              : 'press flex h-9 items-center rounded-md bg-accent px-4 text-caption font-semibold text-white hover:bg-accent/92'
+          }
+        >
+          Продолжить обсуждение
+        </button>
+      )
+      return (
+        <>
+          <p className="text-small leading-snug">
+            {closable ? (
+              <>
+                Вторая сторона согласна на этот пакет. Условия уже в соглашении: можно зафиксировать сделку
+                или продолжить обсуждение — {count(scenario.maxRounds - state.round + 1, ['раунд', 'раунда', 'раундов'])} ещё есть.
+              </>
+            ) : Number.isFinite(settle.needed) ? (
+              <>
+                Вторая сторона приняла пакет, эти условия уже в соглашении. Сделка засчитывается, когда
+                договорённостью закрыта большая часть стола: пока таких условий {settle.moved},
+                нужно {settle.needed}. Можно добрать остальное или зафиксировать то, что есть.
+              </>
+            ) : (
+              <>
+                Вторая сторона приняла пакет, эти условия уже в соглашении. Но на столе пока
+                только {settle.visible} из {scenario.issues.length} условий сделки: чтобы она
+                засчиталась, нужно вывести в разговор хотя бы три. Спросите о том, чего ещё не
+                видите, — или зафиксируйте то, что есть.
+              </>
+            )}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">{closable ? [close, more] : [more, close]}</div>
+        </>
+      )
+    }
+
+    // Встречное предложение: условия посчитаны движком, его можно взять в шторку как есть.
+    if (trayKind === 'counter' && counterView) {
+      return (
+        <>
+          <div className="lbl mb-1">Встречное предложение</div>
+          {termRows(counterView.rows)}
+          <button
+            onClick={() => {
+              setSheetSeed(counterView.deal)
+              setSheet(true)
+            }}
+            className="press mt-2.5 flex h-8 items-center gap-1.5 rounded-sm border border-accent-line bg-accent-soft px-3 text-caption font-semibold text-accent hover:border-accent"
+          >
+            Открыть в шторке
+            {arrow}
+          </button>
+        </>
+      )
+    }
+
+    // Предложение прозвучало в чате: собрать его пакетом — одно нажатие.
+    if (trayKind === 'spoken' && spokenView) {
+      return (
+        <>
+          <p className="text-small leading-snug text-ink2">
+            Условия из вашей реплики в соглашение не попали: туда идёт только пакет, и решение по нему считает код.
+          </p>
+          {spokenView.rows.length > 0 && <div className="mt-1.5">{termRows(spokenView.rows)}</div>}
+          <button
+            onClick={() => {
+              setSheetSeed(spokenView.deal)
+              setSheet(true)
+            }}
+            className="press mt-2.5 flex h-8 items-center gap-1.5 rounded-sm border border-accent-line bg-accent-soft px-3 text-caption font-semibold text-accent hover:border-accent"
+          >
+            {spokenView.rows.length ? 'Собрать пакет с этими условиями' : 'Собрать пакет'}
+            {arrow}
+          </button>
+        </>
+      )
+    }
+
+    // Гипотеза одним кликом.
+    if (trayKind === 'hint' && hint?.probeId) {
+      const probeId = hint.probeId
+      return (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5">
+          <span className="min-w-[180px] flex-1 text-small">
+            {hint.text}
+            {/* Пояснение к первой гипотезе: оценки дают до 15 баллов из 100. */}
+            {state.hypotheses.length === 0 && (
+              <span className="mt-1 block text-caption leading-snug text-ink3">
+                Это догадка о второй стороне. Отметьте, насколько она верна: точность таких оценок даёт до 15 баллов из 100.
+              </span>
+            )}
+          </span>
+          <div className="ml-auto flex gap-1.5">
+            {[
+              { l: 'Похоже', v: 0.85 },
+              { l: 'Не уверен', v: 0.5 },
+              { l: 'Вряд ли', v: 0.15 },
+            ].map((o) => (
+              <button
+                key={o.l}
+                onClick={() => {
+                  setConfidence(probeId, o.v)
+                  setHint(null)
+                }}
+                className="press flex h-8 items-center whitespace-nowrap rounded-sm border border-line-strong bg-surface px-2.5 text-caption text-ink2 hover:border-accent hover:bg-accent-soft hover:text-accent"
+              >
+                {o.l}
+              </button>
+            ))}
+          </div>
+        </div>
+      )
+    }
+
+    // Подсказки первого хода: приёмы, а не ответы — скрытых интересов не называют.
+    if (trayKind === 'openers') {
+      return (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <span className="lbl shrink-0">С чего начать</span>
+          {openers.map((o) => (
+            <button
+              key={o}
+              onClick={() => {
+                setText(o)
+                inputRef.current?.focus()
+              }}
+              className="press flex min-h-11 max-w-full items-center truncate rounded-sm border border-line bg-surface px-2.5 py-1 text-caption text-ink2 hover:border-accent hover:bg-accent-soft hover:text-accent md:min-h-0"
+            >
+              {o}
+            </button>
+          ))}
+        </div>
+      )
+    }
+    return null
+  }
+
+  const trayNode = renderTray()
 
   return (
     <main
@@ -567,20 +721,35 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
           >
             ?
           </button>
-          <span className="num whitespace-nowrap text-small text-ink3">
-            раунд {Math.min(state.round, scenario.maxRounds)}
-            <span className="md:hidden">/{scenario.maxRounds}</span>
-            <span className="hidden md:inline"> из {scenario.maxRounds}</span>
+          <span className="flex flex-col items-end gap-[5px]">
+            <span className="num whitespace-nowrap text-small leading-none text-ink3">
+              раунд {Math.min(state.round, scenario.maxRounds)}
+              <span className="md:hidden">/{scenario.maxRounds}</span>
+              <span className="hidden md:inline"> из {scenario.maxRounds}</span>
+            </span>
+            <span aria-hidden className="hidden gap-[2px] md:flex">
+              {Array.from({ length: scenario.maxRounds }, (_, i) => {
+                const current = Math.min(state.round, scenario.maxRounds) - 1
+                return (
+                  <span
+                    key={i}
+                    className={`h-[3px] w-[5px] rounded-full transition-colors duration-300 ${
+                      i < current ? 'bg-ink3' : i === current ? 'bg-accent' : 'bg-line'
+                    }`}
+                  />
+                )
+              })}
+            </span>
           </span>
 
-          {/* Завершение партии на телефоне — в меню шапки; на широком экране кнопки в рельсе. */}
-          <div className="relative md:hidden">
+          {/* Завершение партии — в меню шапки, на любой ширине. */}
+          <div className="relative">
             <button
               onClick={() => setMenu((m) => (m === 'closed' ? 'root' : 'closed'))}
               aria-label="Действия с партией"
               aria-expanded={menu !== 'closed'}
               disabled={busy || state.status !== 'active'}
-              className="press tap -mr-1.5 flex h-11 w-11 items-center justify-center rounded-md text-ink2 hover:bg-line2 disabled:opacity-40"
+              className="press tap -mr-1.5 flex h-11 w-11 items-center justify-center rounded-md text-ink2 hover:bg-line2 disabled:opacity-40 md:mr-0 md:h-8 md:w-8"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
                 <circle cx="5" cy="12" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="19" cy="12" r="1.7" />
@@ -589,7 +758,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
             {menu !== 'closed' && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setMenu('closed')} />
-                <div className="rise absolute right-0 top-[46px] z-50 w-[286px] rounded-lg border border-line bg-surface p-2 shadow-[0_12px_32px_-12px_rgba(24,22,18,0.28)]">
+                <div className="rise absolute right-0 top-[46px] z-50 w-[286px] md:top-10 rounded-lg border border-line bg-surface p-2 shadow-[0_12px_32px_-12px_rgba(24,22,18,0.28)]">
                   {menu === 'root' ? (
                     <>
                       <button
@@ -674,35 +843,46 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
         <div className="flex min-h-0 flex-col bg-surface">
           <OpponentStage scenario={scenario} state={state} animate={!restored} adaptation={adaptation} />
           <div ref={feedRef} className="flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto px-6 pt-[22px] lg:px-10">
-            {intro && (
-              <div className="line-in rounded-lg border border-line bg-paper px-5 py-4">
-                <div className="flex items-start gap-4">
-                  <div className="min-w-0 flex-1">
-                    <div className="lbl mb-2">С чего начинается разговор</div>
-                    {scenario.organizerContext && (
-                      <p className="mb-2 text-caption leading-snug text-ink3">
-                        Кейс подобран под запрос организатора: «{scenario.organizerContext}»
-                      </p>
-                    )}
-                    <p className="text-small leading-relaxed text-ink2">{scenario.userBrief}</p>
-                    <p className="mt-2.5 text-small leading-relaxed text-ink2">
-                      Напротив вас {scenario.persona.name}, {scenario.persona.role}.
-                      Позиция второй стороны: {decapitalize(scenario.persona.openingPosition)}. Первое
-                      слово за ней.
+            {/* Вводная — ремарка перед разговором. После первого хода свёрнута в строку. */}
+            <div className="line-in">
+              <button
+                type="button"
+                onClick={() => setIntro((o) => !o)}
+                aria-expanded={intro}
+                className="press -mx-1 flex min-h-8 items-center gap-1.5 rounded-sm px-1 text-small font-semibold text-ink2 hover:text-ink"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                  style={{ transform: intro ? 'rotate(90deg)' : 'none', transition: 'transform 200ms var(--ease-out)' }}
+                >
+                  <path d="M9 6l6 6-6 6" />
+                </svg>
+                С чего начинается разговор
+              </button>
+              {intro && (
+                <div className="rise mt-2 max-w-[660px] border-l-2 border-line pl-4">
+                  {scenario.organizerContext && (
+                    <p className="mb-2 text-caption leading-snug text-ink3">
+                      Кейс подобран под запрос организатора: «{scenario.organizerContext}»
                     </p>
-                  </div>
-                  <button
-                    onClick={() => setIntro(false)}
-                    aria-label="Закрыть"
-                    className="press tap -mr-1.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-ink3 hover:bg-line2 hover:text-ink md:mr-0 md:h-8 md:w-8"
-                  >
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <path d="M18 6L6 18M6 6l12 12" />
-                    </svg>
-                  </button>
+                  )}
+                  <p className="text-small leading-relaxed text-ink2">{scenario.userBrief}</p>
+                  <p className="mt-2.5 text-small leading-relaxed text-ink2">
+                    Напротив вас {scenario.persona.name}, {scenario.persona.role}.
+                    Позиция второй стороны: {decapitalize(scenario.persona.openingPosition)}. Первое
+                    слово за ней.
+                  </p>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             {state.transcript.map((t, i) => {
               const isLast = i === lastIndex
@@ -717,23 +897,19 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
                     </div>
                     {/* Какой приём прозвучал — и к какой методике он относится. */}
                     {t.acts.length > 0 && (
-                      <div className="mt-1.5 flex flex-wrap justify-end gap-1.5">
-                        {actTags(t.acts).map((tag) => {
-                          return (
-                            <span
-                              key={tag.act}
-                              className={`rounded-sm px-1.5 py-px text-[11px] font-medium leading-4 ${
-                                tag.tone === 'good'
-                                  ? 'bg-accent-soft text-accent'
-                                  : tag.tone === 'bad'
-                                    ? 'bg-danger-soft text-danger'
-                                    : 'bg-line2 text-ink3'
-                              }`}
-                            >
+                      <div className="mt-1.5 flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+                        {actTags(t.acts).map((tag) =>
+                          tag.tone === 'bad' ? (
+                            <span key={tag.act} className="rounded-sm bg-danger-soft px-1.5 py-px text-label font-medium leading-4 text-danger">
                               {tag.text}
                             </span>
-                          )
-                        })}
+                          ) : (
+                            <span key={tag.act} className="flex items-center gap-1.5 text-label font-medium leading-4 text-ink3">
+                              <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${tag.tone === 'good' ? 'bg-accent' : 'bg-ink-faint'}`} />
+                              {tag.text}
+                            </span>
+                          ),
+                        )}
                       </div>
                     )}
                   </div>
@@ -763,7 +939,8 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
                       </div>
                       {decided && (
                         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-ink3">
-                          <span className="rounded-sm border border-line px-1.5 py-px text-[11px] font-medium leading-4">посчитано алгоритмом</span>
+                          <span className="font-medium text-ink2">посчитано алгоритмом</span>
+                          <span aria-hidden>·</span>
                           <span>{VERDICT_RULE[decided]}</span>
                         </div>
                       )}
@@ -798,212 +975,15 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
               </div>
             )}
 
-            {/* Гипотеза одним кликом */}
-            {hint && !busy && (
-              <div className="rise flex max-w-[600px] flex-wrap items-center gap-x-4 gap-y-2.5 rounded-md border border-line bg-paper px-3.5 py-2.5">
-                <span className="min-w-[180px] flex-1 text-small">
-                  {hint.text}
-                  {/* Пояснение к первой гипотезе: оценки дают до 15 баллов из 100. */}
-                  {hint.probeId && state.hypotheses.length === 0 && (
-                    <span className="mt-1 block text-caption leading-snug text-ink3">
-                      Это догадка о второй стороне. Отметьте, насколько она верна: точность таких оценок даёт до 15 баллов из 100.
-                    </span>
-                  )}
-                </span>
-                {hint.probeId ? (
-                  <div className="ml-auto flex gap-1.5">
-                    {[
-                      { l: 'Похоже', v: 0.85 },
-                      { l: 'Не уверен', v: 0.5 },
-                      { l: 'Вряд ли', v: 0.15 },
-                    ].map((o) => (
-                      <button
-                        key={o.l}
-                        onClick={() => {
-                          setConfidence(hint.probeId!, o.v)
-                          setHint(null)
-                        }}
-                        className="press flex h-7 items-center whitespace-nowrap rounded-sm border border-line-strong bg-surface px-2.5 text-caption text-ink2 hover:border-accent hover:bg-accent-soft hover:text-accent"
-                      >
-                        {o.l}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <button onClick={() => setHint(null)} className="press ml-auto whitespace-nowrap text-caption text-ink3 hover:text-ink">
-                    Понятно
-                  </button>
-                )}
-              </div>
-            )}
-            {/* Согласие получено: закрыть сделку или торговаться дальше — решает игрок.
-                Если стол закрыт не полностью, показываем, сколько условий не хватает,
-                и даём закрыться как есть. */}
-            {pendingDeal && !busy && (() => {
-              const settle = settlement(scenario, state)
-              const closable = state.status === 'deal'
-              const closeDeal = () => {
-                setPendingDeal(false)
-                setSealed({ round: state.agreedAtRound ?? state.round })
-                setTimeout(() => {
-                  setClosing(true)
-                  setTimeout(() => finish(closable ? state : { ...state, status: 'deal' as const }), 600)
-                }, 1300)
-              }
-              const resume = () => {
-                setPendingDeal(false)
-                setState((s) => ({ ...s, status: 'active' }))
-                inputRef.current?.focus()
-              }
-              const close = (
-                <button
-                  key="close"
-                  onClick={closeDeal}
-                  className={
-                    closable
-                      ? 'press flex h-9 items-center rounded-md bg-accent px-4 text-caption font-semibold text-white hover:bg-accent/92'
-                      : 'press flex h-9 items-center rounded-md border border-line bg-surface px-4 text-caption text-ink2 hover:border-accent hover:text-accent'
-                  }
-                >
-                  {closable ? 'Зафиксировать сделку' : 'Зафиксировать как есть'}
-                </button>
-              )
-              const more = (
-                <button
-                  key="more"
-                  onClick={resume}
-                  className={
-                    closable
-                      ? 'press flex h-9 items-center rounded-md border border-line bg-surface px-4 text-caption text-ink2 hover:border-accent hover:text-accent'
-                      : 'press flex h-9 items-center rounded-md bg-accent px-4 text-caption font-semibold text-white hover:bg-accent/92'
-                  }
-                >
-                  Продолжить обсуждение
-                </button>
-              )
-              return (
-                <div className="rise max-w-[600px] rounded-md border border-accent-line bg-accent-soft px-4 py-3.5">
-                  <p className="text-small leading-snug">
-                    {closable ? (
-                      <>
-                        Вторая сторона согласна на этот пакет. Условия уже в соглашении: можно зафиксировать сделку
-                        или продолжить обсуждение — {count(scenario.maxRounds - state.round + 1, ['раунд', 'раунда', 'раундов'])} ещё есть.
-                      </>
-                    ) : Number.isFinite(settle.needed) ? (
-                      <>
-                        Вторая сторона приняла пакет, эти условия уже в соглашении. Сделка засчитывается, когда
-                        договорённостью закрыта большая часть стола: пока таких условий {settle.moved},
-                        нужно {settle.needed}. Можно добрать остальное или зафиксировать то, что есть.
-                      </>
-                    ) : (
-                      <>
-                        Вторая сторона приняла пакет, эти условия уже в соглашении. Но на столе пока
-                        только {settle.visible} из {scenario.issues.length} условий сделки: чтобы она
-                        засчиталась, нужно вывести в разговор хотя бы три. Спросите о том, чего ещё не
-                        видите, — или зафиксируйте то, что есть.
-                      </>
-                    )}
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">{closable ? [close, more] : [more, close]}</div>
-                </div>
-              )
-            })()}
-
-            {/* Предложение прозвучало в чате: собрать его пакетом — одно нажатие. */}
-            {spokenView && !busy && !pendingDeal && !counterView && (
-              <div className="rise max-w-[600px] rounded-md border border-line bg-surface px-4 py-3">
-                <p className="text-small leading-snug text-ink2">
-                  Условия из вашей реплики в соглашение не попали: туда идёт только пакет, и решение по нему считает код.
-                </p>
-                {spokenView.rows.length > 0 && (
-                  <div className="mt-2 flex flex-col">
-                    {spokenView.rows.map((r) => (
-                      <div
-                        key={r.label}
-                        className="flex flex-col gap-0.5 border-b border-line2 py-[7px] last:border-0 sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,auto)] sm:items-baseline sm:gap-3"
-                      >
-                        <span className="text-small text-ink2">{r.label}</span>
-                        <span className="num flex flex-wrap items-baseline gap-x-[7px] text-small sm:justify-end sm:text-right">
-                          <span className="text-ink3 line-through decoration-line-strong">{r.from}</span>
-                          <span className="font-semibold">{r.to}</span>
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <button
-                  onClick={() => {
-                    setSheetSeed(spokenView.deal)
-                    setSheet(true)
-                  }}
-                  className="press mt-3 flex h-8 items-center gap-1.5 rounded-sm border border-accent-line bg-accent-soft px-3 text-caption font-semibold text-accent hover:border-accent"
-                >
-                  {spokenView.rows.length ? 'Собрать пакет с этими условиями' : 'Собрать пакет'}
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-                </button>
-              </div>
-            )}
-
-            {/* Встречное предложение: условия посчитаны движком, его можно взять в шторку как есть. */}
-            {counterView && !busy && (
-              <div className="rise max-w-[600px] rounded-md border border-line bg-surface px-4 py-3">
-                <div className="lbl mb-2">Встречное предложение</div>
-                <div className="flex flex-col">
-                  {counterView.rows.map((r) => (
-                    <div
-                      key={r.label}
-                      className="flex flex-col gap-0.5 border-b border-line2 py-[7px] last:border-0 sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,auto)] sm:items-baseline sm:gap-3"
-                    >
-                      <span className="text-small text-ink2">{r.label}</span>
-                      <span className="num flex flex-wrap items-baseline gap-x-[7px] text-small sm:justify-end sm:text-right">
-                        <span className="text-ink3 line-through decoration-line-strong">{r.from}</span>
-                        <span className="font-semibold">{r.to}</span>
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                <button
-                  onClick={() => {
-                    setSheetSeed(counterView.deal)
-                    setSheet(true)
-                  }}
-                  className="press mt-3 flex h-8 items-center gap-1.5 rounded-sm border border-accent-line bg-accent-soft px-3 text-caption font-semibold text-accent hover:border-accent"
-                >
-                  Открыть в шторке
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-                </button>
-              </div>
-            )}
             <div className="h-2 shrink-0" />
           </div>
 
-          {/* Ввод */}
-          <div className="flex shrink-0 flex-col gap-[11px] border-t border-line2 px-6 pb-5 pt-[14px] lg:px-10">
-            {/* Подсказки первого хода: приёмы, а не ответы — скрытых интересов не называют. */}
-            {openers.length > 0 && state.round === 1 && !text && !busy && state.status === 'active' && (
-              <div className="rise flex flex-wrap items-center gap-x-3 gap-y-2">
-                <span className="lbl shrink-0">С чего начать</span>
-                {openers.map((o) => (
-                  <button
-                    key={o}
-                    onClick={() => {
-                      setText(o)
-                      inputRef.current?.focus()
-                    }}
-                    className="press flex min-h-11 max-w-full items-center truncate rounded-sm border border-line bg-surface px-2.5 py-1 text-caption text-ink2 hover:border-accent hover:bg-accent-soft hover:text-accent md:min-h-0"
-                  >
-                    {o}
-                  </button>
-                ))}
-              </div>
-            )}
-            {(pendingFact || offline || restored) && (
-              <div className="flex items-center gap-3">
+          {/* Рабочая зона: что можно сделать сейчас, поле ответа и два хода — сказать или предложить пакет. */}
+          <div className="flex shrink-0 flex-col gap-2 px-4 pb-4 pt-2 md:px-6 md:pb-5 lg:px-10">
+            {(offline || restored) && (
+              <div className="flex items-center gap-3 px-1">
                 {restored && (
                   <span className="text-caption text-ink-faint">партия восстановлена после перезагрузки</span>
-                )}
-                {pendingFact && (
-                  <span className="num text-caption font-semibold text-accent">факт уйдёт вместе с ответом</span>
                 )}
                 {offline && (
                   <span
@@ -1018,43 +998,90 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
               </div>
             )}
             <div
-              className={`flex items-end gap-[10px] rounded-md ${
-                tour === 1 ? 'outline outline-2 outline-offset-4 outline-accent' : ''
+              className={`overflow-hidden rounded-lg border bg-surface shadow-[0_1px_2px_rgba(26,28,25,0.04),0_10px_28px_-18px_rgba(26,28,25,0.22)] transition-colors duration-200 ${
+                tour === 1 ? 'border-accent outline outline-2 outline-offset-4 outline-accent' : 'border-line-strong focus-within:border-accent'
               }`}
             >
-              <textarea
-                ref={inputRef}
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
+              {trayNode && (
+                <div
+                  key={trayKind}
+                  className={`rise max-h-[42vh] overflow-y-auto border-b px-4 py-3 ${
+                    trayKind === 'deal' ? 'border-accent-line bg-accent-soft' : 'border-line2 bg-paper'
+                  }`}
+                >
+                  {trayNode}
+                </div>
+              )}
+              {armedFact && (
+                <div className="rise flex items-center gap-2.5 border-b border-line2 px-4 py-2">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0 text-accent">
+                    <path d="M20.5 11.5l-8.2 8.2a5 5 0 01-7.1-7.1l8.6-8.6a3.4 3.4 0 014.8 4.8l-8.4 8.4a1.7 1.7 0 01-2.4-2.4l7.7-7.7" />
+                  </svg>
+                  <span className="min-w-0 flex-1 truncate text-caption text-ink2">{armedFact.detail}</span>
+                  <span className="num hidden shrink-0 text-caption font-semibold text-accent sm:inline">факт уйдёт вместе с ответом</span>
+                  <button
+                    type="button"
+                    onClick={() => setPendingFact(undefined)}
+                    aria-label="приложен к ответу"
+                    aria-pressed
+                    className="press tap -mr-1.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-ink3 hover:bg-line2 hover:text-ink"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+                      <path d="M18 6L6 18M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+              <div className="flex items-end gap-2 p-2">
+                <textarea
+                  ref={inputRef}
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      const v = text.trim()
+                      if (v) {
+                        setText('')
+                        void send({ userText: v })
+                      }
+                    }
+                  }}
+                  rows={1}
+                  disabled={busy || state.status !== 'active'}
+                  placeholder="Напишите ответ…"
+                  className="max-h-32 min-h-[44px] w-full min-w-0 flex-1 resize-none bg-transparent px-2.5 py-3 outline-none placeholder:text-ink3 focus-visible:outline-none disabled:opacity-50"
+                />
+                <button
+                  onClick={() => setSheet(true)}
+                  disabled={state.visibleIssues.length < 2 || state.status !== 'active'}
+                  aria-label="Собрать предложение"
+                  title="Собрать предложение"
+                  className={`press flex h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-md border border-accent-line bg-surface px-3 font-semibold text-accent hover:border-accent hover:bg-accent-soft disabled:border-line disabled:text-ink3 disabled:hover:bg-surface min-[1400px]:px-4 ${
+                    tour === 2 ? 'outline outline-2 outline-offset-2 outline-accent' : ''
+                  }`}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M7 4L3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7" />
+                  </svg>
+                  <span className="hidden min-[1400px]:inline">Собрать предложение</span>
+                </button>
+                <button
+                  onClick={() => {
                     const v = text.trim()
                     if (v) {
                       setText('')
                       void send({ userText: v })
                     }
-                  }
-                }}
-                rows={1}
-                disabled={busy || state.status !== 'active'}
-                placeholder="Напишите ответ…"
-                className="max-h-32 min-h-[44px] w-full min-w-0 flex-1 resize-none rounded-md border border-line-strong bg-surface px-3.5 py-3 outline-none transition-colors placeholder:text-ink3 focus:border-accent disabled:opacity-50"
-              />
-              <button
-                onClick={() => {
-                  const v = text.trim()
-                  if (v) {
-                    setText('')
-                    void send({ userText: v })
-                  }
-                }}
-                disabled={busy || !text.trim() || state.status !== 'active'}
-                className="press flex h-11 shrink-0 items-center gap-2 rounded-md bg-accent px-5 font-semibold text-white hover:bg-accent/92 disabled:opacity-30"
-              >
-                Отправить
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-              </button>
+                  }}
+                  disabled={busy || !text.trim() || state.status !== 'active'}
+                  aria-label="Отправить"
+                  className="press flex h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-md bg-accent px-3 font-semibold text-white hover:bg-accent/92 disabled:opacity-30 sm:px-5"
+                >
+                  <span className="hidden sm:inline">Отправить</span>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -158,7 +158,7 @@ export function OfferSheet({
               <div className="grid grid-cols-1 sm:grid-cols-2">
                 <div className="border-r border-line2">
                   <div className="sticky top-0 z-10 border-b border-line2 bg-surface px-5 py-2.5 sm:px-[22px]">
-                    <div className="lbl text-danger">Отдаём</div>
+                    <div className="lbl text-danger">Отдаём{groups.give.length > 0 && <span className="num"> · {groups.give.length}</span>}</div>
                   </div>
                   <div className="flex flex-col gap-[18px] px-5 pb-5 pt-4 sm:px-[22px]">
                     {groups.give.length ? groups.give.map((i) => picker(i.id)) : (
@@ -168,7 +168,7 @@ export function OfferSheet({
                 </div>
                 <div>
                   <div className="sticky top-0 z-10 border-b border-line2 bg-surface px-5 py-2.5 sm:px-[22px]">
-                    <div className="lbl text-accent">Получаем взамен</div>
+                    <div className="lbl text-accent">Получаем взамен{groups.get.length > 0 && <span className="num"> · {groups.get.length}</span>}</div>
                   </div>
                   <div className="flex flex-col gap-[18px] px-5 pb-5 pt-4 sm:px-[22px]">
                     {groups.get.length ? groups.get.map((i) => picker(i.id)) : (

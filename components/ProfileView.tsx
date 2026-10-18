@@ -94,6 +94,51 @@ export function ProfileView({ scenarios }: { scenarios: Scenario[] }) {
               </div>
             </div>
 
+            {/* Навыки как допуски: освоен со второй зачётной сессии, в которой сработал.
+                Медали — первое, что видно в профиле. */}
+            <section className="mt-9">
+              <div className="lbl mb-3 flex items-baseline gap-3 border-b border-line pb-2">
+                <span>Навыки</span>
+                <span className="num ml-auto shrink-0">освоено {mastered} из {skillList.length}</span>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-5 sm:gap-3">
+                {skillList.map((s) => (
+                  <div
+                    key={s.id}
+                    className={`flex items-start gap-4 rounded-lg px-4 py-3.5 sm:flex-col sm:items-center sm:gap-2.5 sm:px-3 sm:py-5 sm:text-center ${
+                      s.status === 'mastered'
+                        ? 'bg-accent-soft shadow-[inset_0_0_0_1px_var(--color-accent-line)]'
+                        : 'bg-surface shadow-[inset_0_0_0_1px_var(--color-line)]'
+                    }`}
+                  >
+                    <span className="shrink-0">
+                      <span className="sm:hidden">
+                        <SkillMedal id={s.id} status={s.status} size={40} />
+                      </span>
+                      <span className="hidden sm:block">
+                        <SkillMedal id={s.id} status={s.status} size={56} />
+                      </span>
+                    </span>
+                    <span className="flex min-w-0 flex-col gap-1 sm:items-center">
+                      <span className={`font-semibold leading-snug text-balance ${s.status === 'mastered' ? 'text-accent' : ''}`}>{s.title}</span>
+                      <span
+                        className={`text-caption ${
+                          s.status === 'mastered'
+                            ? 'font-semibold text-accent'
+                            : s.status === 'learning'
+                              ? 'text-ink2'
+                              : 'text-ink3'
+                        }`}
+                      >
+                        {SKILL_STATUS[s.status]}
+                      </span>
+                      <span className="mt-1 text-caption leading-snug text-ink2 text-pretty">{s.detail}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+
             <div>
               {found.length === 0 && (
                 <p className="mt-8 rounded-md border border-line bg-surface px-5 py-4 text-ink2">
@@ -130,39 +175,6 @@ export function ProfileView({ scenarios }: { scenarios: Scenario[] }) {
                 </section>
               )}
             </div>
-
-            {/* Навыки как допуски: освоен со второй зачётной сессии, в которой сработал. */}
-            <section className="mt-10">
-              <div className="lbl mb-3 flex items-baseline gap-3 border-b border-line pb-2">
-                <span>Навыки</span>
-                <span className="num ml-auto shrink-0">освоено {mastered} из {skillList.length}</span>
-              </div>
-              <div className="flex flex-col">
-                {skillList.map((s) => (
-                  <div
-                    key={s.id}
-                    className="grid grid-cols-[auto_1fr_auto] items-baseline gap-x-4 gap-y-1 border-b border-line2 py-3.5 last:border-0"
-                  >
-                    <span className="row-span-2 self-center">
-                      <SkillMedal id={s.id} status={s.status} size={40} />
-                    </span>
-                    <span className={`font-semibold ${s.status === 'mastered' ? 'text-accent' : ''}`}>{s.title}</span>
-                    <span
-                      className={`whitespace-nowrap text-caption ${
-                        s.status === 'mastered'
-                          ? 'font-semibold text-accent'
-                          : s.status === 'learning'
-                            ? 'text-ink2'
-                            : 'text-ink3'
-                      }`}
-                    >
-                      {SKILL_STATUS[s.status]}
-                    </span>
-                    <span className="col-span-2 col-start-2 text-small leading-snug text-ink2">{s.detail}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
 
             {/* Прогрессия: растёт не игрок, а вторая сторона. */}
             <section className="mt-10">

@@ -49,10 +49,71 @@ function Redaction({ index, overlay = false }: { index: number; overlay?: boolea
       {REDACTION[index % REDACTION.length].map((w, i) => (
         <span
           key={i}
-          className={`block h-2 rounded-[3px] bg-ink2 ${overlay ? 'redact-bar' : ''}`}
+          className={`block h-2 rounded-[3px] ${overlay ? 'redact-bar bg-ink-faint' : 'bg-line-strong'}`}
           style={{ width: `${w}%`, animationDelay: overlay ? `${i * 90}ms` : undefined }}
         />
       ))}
+    </span>
+  )
+}
+
+/** Шкала идёт дугой снизу слева направо, внизу остаётся зазор, как у прибора. */
+const SWEEP_FROM = -130
+const SEGMENT = 52
+
+/**
+ * Настрой второй стороны — пять делений вокруг портрета. Заполнено столько,
+ * сколько ступеней настроя пройдено от раздражения, цвет — по текущей ступени.
+ */
+function MoodGauge({
+  band,
+  size,
+  gap,
+  stroke,
+  halo,
+  children,
+}: {
+  band: ReturnType<typeof moodBand>
+  size: number
+  gap: number
+  stroke: number
+  halo: number
+  children: React.ReactNode
+}) {
+  const filled = MOOD_BANDS.indexOf(band) + 1
+  const r = size / 2 + gap + stroke / 2
+  const outer = r + stroke / 2 + halo
+  const box = outer * 2
+  const c = outer
+  const spacing = (stroke / r) * (180 / Math.PI) + 7
+  const point = (deg: number) => {
+    const a = ((deg - 90) * Math.PI) / 180
+    return `${(c + r * Math.cos(a)).toFixed(2)} ${(c + r * Math.sin(a)).toFixed(2)}`
+  }
+  return (
+    <span className="relative block shrink-0" style={{ width: box, height: box }}>
+      <svg width={box} height={box} viewBox={`0 0 ${box} ${box}`} aria-hidden className="absolute inset-0">
+        {halo > 0 && <circle cx={c} cy={c} r={outer} className="mood-halo" />}
+        {MOOD_BANDS.map((b, i) => {
+          const from = SWEEP_FROM + i * SEGMENT + spacing / 2
+          const to = SWEEP_FROM + (i + 1) * SEGMENT - spacing / 2
+          return (
+            <path
+              key={b}
+              d={`M ${point(from)} A ${r} ${r} 0 0 1 ${point(to)}`}
+              fill="none"
+              strokeWidth={stroke}
+              strokeLinecap="round"
+              className="mood-seg"
+              data-on={i < filled || undefined}
+              style={{ transitionDelay: `${i * 50}ms` }}
+            />
+          )
+        })}
+      </svg>
+      <span className="absolute" style={{ inset: outer - size / 2 }}>
+        {children}
+      </span>
     </span>
   )
 }
@@ -101,13 +162,10 @@ export function OpponentStage({
   const opened = cards.filter((c) => c.open).length
 
   const [fresh, setFresh] = useState<string[]>([])
-  const [toast, setToast] = useState<string | null>(null)
-  const [pulse, setPulse] = useState(false)
   const [detail, setDetail] = useState<string | null>(null)
   const [verdict, setVerdict] = useState<{ v: Verdict; key: number } | null>(null)
   const seen = useRef(state.revealedInterests)
   const turns = useRef(state.transcript.length)
-  const lastBand = useRef(band)
   // Таймеры живут отдельно от эффекта: следующий ход меняет состояние раньше,
   // чем плашка успевает уйти, и сброс в эффекте оставил бы её висеть.
   const timers = useRef<ReturnType<typeof setTimeout>[]>([])
@@ -120,10 +178,8 @@ export function OpponentStage({
     if (!animate || added.length === 0) return
     timers.current.forEach(clearTimeout)
     setFresh(added)
-    const last = scenario.hiddenInterests.find((h) => h.id === added[added.length - 1])
-    if (last) setToast(`Раскрыто: ${LAYER_LABEL[last.layer].toLowerCase()}`)
-    timers.current = [setTimeout(() => setFresh([]), 1100), setTimeout(() => setToast(null), 2600)]
-  }, [state.revealedInterests, animate, scenario.hiddenInterests])
+    timers.current = [setTimeout(() => setFresh([]), 1100)]
+  }, [state.revealedInterests, animate])
 
   // Ответ на пакет: вердикт лежит в ходе игрока перед новой репликой.
   useEffect(() => {
@@ -137,20 +193,13 @@ export function OpponentStage({
     timers.current.push(setTimeout(() => setVerdict(null), 3000))
   }, [state.transcript, animate])
 
-  useEffect(() => {
-    if (lastBand.current === band) return
-    lastBand.current = band
-    if (!animate) return
-    setPulse(true)
-    timers.current.push(setTimeout(() => setPulse(false), 420))
-  }, [band, animate])
-
   // После возврата к прошлому раунду раскрытая подробность могла снова закрыться.
   useEffect(() => {
     if (detail && !state.revealedInterests.includes(detail)) setDetail(null)
   }, [detail, state.revealedInterests])
 
-  const ring = `stage-ring${pulse ? ' mood-pulse' : ''}`
+  const lastFresh = scenario.hiddenInterests.find((h) => h.id === fresh[fresh.length - 1])
+  const freshLabel = lastFresh ? `Раскрыто: ${LAYER_LABEL[lastFresh.layer].toLowerCase()}` : null
   const remembered = adaptationTargets(adaptation)
   const level = adaptationLevel(adaptation)
 
@@ -184,11 +233,11 @@ export function OpponentStage({
       title={c.open ? c.text : undefined}
       className={`h-[104px] rounded-lg px-3.5 py-3 transition-[background-color,box-shadow] duration-300 ${
         c.open
-          ? 'bg-surface shadow-[inset_0_0_0_1px_var(--color-accent-line),0_8px_22px_-14px_rgba(30,92,65,0.45)]'
-          : 'bg-rail'
+          ? 'bg-surface shadow-[inset_0_0_0_1px_var(--color-accent-line),0_10px_26px_-14px_rgba(30,92,65,0.5)]'
+          : 'bg-paper shadow-[inset_0_0_0_1px_var(--color-line2)]'
       }`}
     >
-      <span className={`flex items-center gap-1.5 text-caption font-semibold ${c.open ? 'text-accent' : 'text-ink2'}`}>
+      <span className={`flex items-center gap-1.5 text-caption font-semibold ${c.open ? 'text-accent' : 'text-ink3'}`}>
         <LayerGlyph kind={c.kind} />
         {c.layer}
         {!c.open && <span className="sr-only">, не раскрыто</span>}
@@ -206,17 +255,6 @@ export function OpponentStage({
         )}
       </span>
     </div>
-  )
-
-  const meter = (
-    <span aria-hidden className="flex gap-[3px]">
-      {MOOD_BANDS.map((b) => (
-        <span
-          key={b}
-          className={`h-[5px] w-4 rounded-full transition-colors duration-300 ${b === band ? 'bg-[var(--mood)]' : 'bg-line'}`}
-        />
-      ))}
-    </span>
   )
 
   const chip = (
@@ -239,16 +277,15 @@ export function OpponentStage({
         </div>
         <div className="grid grid-cols-[minmax(0,1fr)_176px_minmax(0,1fr)] items-center gap-5">
           <div className="grid gap-2">{cards.slice(0, 2).map((c, i) => wideCard(c, i))}</div>
-          <div className="flex flex-col items-center gap-2 text-center">
-            <span className={`${ring} block rounded-full`}>
-              <Portrait name={scenario.persona.name} file={scenario.persona.portrait} size={108} />
-            </span>
-            <span className="mt-1.5 flex flex-col">
+          <div className="flex flex-col items-center gap-1.5 text-center">
+            <MoodGauge band={band} size={104} gap={4} stroke={5} halo={6}>
+              <Portrait name={scenario.persona.name} file={scenario.persona.portrait} size={104} />
+            </MoodGauge>
+            <span className="flex flex-col">
               <span className="text-body font-semibold leading-tight">{scenario.persona.name}</span>
               <span className="text-caption text-ink3">{scenario.persona.role}</span>
             </span>
             {chip}
-            {meter}
           </div>
           <div className="grid gap-2">{cards.slice(2).map((c, i) => wideCard(c, i + 2))}</div>
         </div>
@@ -257,17 +294,14 @@ export function OpponentStage({
       {/* Узкий или невысокий экран: строка и четыре карты в ряд. */}
       <div className="flex flex-col gap-2.5 px-4 py-3 stage:hidden lg:px-10">
         <div className="flex items-center gap-3">
-          <span className={`${ring} stage-ring-sm block rounded-full`}>
-            <Portrait name={scenario.persona.name} file={scenario.persona.portrait} size={44} />
-          </span>
+          <MoodGauge band={band} size={42} gap={3} stroke={3} halo={0}>
+            <Portrait name={scenario.persona.name} file={scenario.persona.portrait} size={42} />
+          </MoodGauge>
           <span className="flex min-w-0 flex-col">
             <span className="truncate text-small font-semibold leading-tight">{scenario.persona.name}</span>
             <span className="truncate text-caption text-ink3">{scenario.persona.role}</span>
           </span>
-          <span className="ml-auto flex shrink-0 flex-col items-end gap-1.5">
-            {chip}
-            <span className="hidden sm:flex">{meter}</span>
-          </span>
+          <span className="ml-auto flex shrink-0">{chip}</span>
         </div>
         <div className="grid grid-cols-4 gap-1.5">
           {cards.map((c) =>
@@ -308,7 +342,7 @@ export function OpponentStage({
       </div>
 
       <div aria-live="polite" className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex translate-y-[70%] justify-center px-4">
-        {verdict ? (
+        {verdict && (
           <span
             key={verdict.key}
             className="verdict-in relative flex items-center gap-3 overflow-hidden rounded-lg bg-surface/90 py-2.5 pl-2.5 pr-5 shadow-[0_0_0_1px_rgba(26,28,25,0.06),0_14px_36px_-12px_rgba(26,28,25,0.32)] backdrop-blur-md"
@@ -322,13 +356,8 @@ export function OpponentStage({
             </span>
             <span aria-hidden className="verdict-timer absolute inset-x-0 bottom-0 h-[2px] bg-line-strong" />
           </span>
-        ) : (
-          toast && (
-            <span className="rise rounded-full bg-accent px-3.5 py-1.5 text-caption font-semibold text-white shadow-[0_6px_20px_rgba(26,28,25,0.18)]">
-              {toast}
-            </span>
-          )
         )}
+        {freshLabel && <span className="sr-only">{freshLabel}</span>}
       </div>
     </section>
   )

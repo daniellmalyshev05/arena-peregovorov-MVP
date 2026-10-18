@@ -23,8 +23,6 @@ export function Dossier({
   state: NegotiationState
   onSetConfidence: (id: string, confidence: number) => void
 }) {
-  const revealed = scenario.hiddenInterests.filter((h) => state.revealedInterests.includes(h.id))
-
   return (
     <div className="px-4 py-4 lg:px-[18px]">
       <div className="lbl mb-1">Гипотезы о второй стороне</div>
@@ -60,22 +58,6 @@ export function Dossier({
           )
         })}
       </div>
-
-      {revealed.length > 0 && (
-        <div className="mt-6">
-          <div className="lbl mb-[10px]">Раскрытые интересы</div>
-          <div className="flex flex-col gap-2">
-            {revealed.map((h) => (
-              <div
-                key={h.id}
-                className="term-enter rounded-md border border-accent-line bg-accent-soft px-3 py-[10px] text-small leading-snug"
-              >
-                {h.label}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   )
 }

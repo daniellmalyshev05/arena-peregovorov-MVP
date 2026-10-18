@@ -242,13 +242,21 @@ body {
   transition: background-color 320ms var(--ease-out), color 320ms var(--ease-out);
 }
 
-/* Смена настроя: короткий толчок кольца, чтобы перемену было видно краем глаза. */
-@keyframes mood-pulse {
-  0% { transform: scale(1); }
-  45% { transform: scale(1.045); }
-  100% { transform: scale(1); }
+/* Свёрнутый факт: последняя строка уходит в бумагу, а не обрывается. */
+.fact-fade {
+  mask-image: linear-gradient(to bottom, #000 64%, rgb(0 0 0 / 0.18));
 }
-.mood-pulse { animation: mood-pulse 420ms var(--ease-out); }
+
+/* Шкала настроя вокруг портрета: деления заполняются по очереди. */
+.mood-seg {
+  stroke: var(--color-line);
+  transition: stroke 300ms var(--ease-out);
+}
+.mood-seg[data-on] { stroke: var(--mood); }
+.mood-halo {
+  fill: var(--mood-soft);
+  transition: fill 320ms var(--ease-out);
+}
 
 /*
   Раскрытие: плашки, закрывавшие строки, стираются слева направо,
