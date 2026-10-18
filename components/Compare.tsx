@@ -105,11 +105,13 @@ export function Compare({
               {signed(pct(s), 0)}%
             </span>
           </div>
-          <div className="h-[5px] overflow-hidden rounded-full bg-line2">
+          <div className="relative h-[5px] overflow-hidden rounded-full bg-line2">
             <div
               className={`h-[5px] rounded-full ${pct(s) < 0 ? 'bg-danger' : leads ? 'bg-accent' : 'bg-ink3'}`}
-              style={{ width: `${Math.max(2, Math.min(100, ((utility(scenario, s.deal, 'user') - batna + 22) / 55) * 100))}%` }}
+              style={{ width: `${Math.max(2, Math.min(100, (((agreed(s) ? utility(scenario, s.deal, 'user') : batna) - batna + 22) / 55) * 100))}%` }}
             />
+            {/* Ноль — запасной вариант: та же отметка, что на столе. */}
+            <div className="absolute -inset-y-0.5 w-[1.5px] bg-ink2" style={{ left: `${(22 / 55) * 100}%` }} />
           </div>
           <div className="mt-3 text-caption text-ink2">
             Совместная ценность использована на <span className="num font-semibold">{eff(s)}%</span>
@@ -122,7 +124,10 @@ export function Compare({
   return (
     <main className="flex h-dvh flex-col bg-paper">
       <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-line bg-surface px-4 lg:px-5">
-        <div className="flex min-w-0 items-center gap-3">
+        <div className="flex min-w-0 items-center gap-2 md:gap-3">
+          <a href="/" aria-label="К списку сценариев" className="press tap -ml-1.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-ink2 hover:bg-line2 md:ml-0 md:h-8 md:w-8">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
+          </a>
           <span className="font-semibold">Развилка</span>
           <span className="text-ink3">·</span>
           <span className="truncate text-small text-ink2">момент переигран</span>
