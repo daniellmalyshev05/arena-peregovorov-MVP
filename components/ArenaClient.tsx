@@ -841,7 +841,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
 
         {/* Разговор */}
         <div className="flex min-h-0 flex-col bg-surface">
-          <OpponentStage scenario={scenario} state={state} animate={!restored} adaptation={adaptation} />
+          <OpponentStage scenario={scenario} state={state} animate={!restored} adaptation={adaptation} thinking={busy} />
           <div ref={feedRef} className="enter-feed flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto px-6 pt-[22px] lg:px-10">
             {/* Вводная — ремарка перед разговором. После первого хода свёрнута в строку. */}
             <div className="line-in">
@@ -961,13 +961,15 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
             {/* Развилка в конце ленты: ход ещё не переигран. */}
             {replay && state.transcript.length === replay.turnIndex && branchMark}
 
+            {/* Место, где появится ответ: имя второй стороны и точки, пока она думает. */}
             {busy && (
-              <div className="flex items-center gap-3 pl-1">
-                <span className="flex gap-1">
+              <div className="line-in">
+                <div className="mb-1.5 text-caption text-ink3">{scenario.persona.name}</div>
+                <span className="flex h-5 items-center gap-1" aria-hidden>
                   {[0, 1, 2].map((i) => (
                     <span
                       key={i}
-                      className="typing-dot h-1.5 w-1.5 rounded-full bg-ink-faint"
+                      className="typing-dot h-[7px] w-[7px] rounded-full bg-ink3"
                       style={{ animationDelay: `${i * 0.16}s` }}
                     />
                   ))}

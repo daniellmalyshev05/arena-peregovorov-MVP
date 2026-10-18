@@ -72,11 +72,14 @@ function MoodGauge({
   stroke,
   halo,
   empty = false,
+  thinking = false,
   children,
 }: {
   band: ReturnType<typeof moodBand>
   /** До входа в переговоры шкала пустая и заполняется на глазах. */
   empty?: boolean
+  /** Вторая сторона обдумывает ответ: по шкале идёт тихая волна. */
+  thinking?: boolean
   size: number
   gap: number
   stroke: number
@@ -94,7 +97,7 @@ function MoodGauge({
     return `${(c + r * Math.cos(a)).toFixed(2)} ${(c + r * Math.sin(a)).toFixed(2)}`
   }
   return (
-    <span className="relative block shrink-0" style={{ width: box, height: box }}>
+    <span className={`relative block shrink-0 ${thinking ? 'gauge-thinking' : ''}`} style={{ width: box, height: box }}>
       <svg width={box} height={box} viewBox={`0 0 ${box} ${box}`} aria-hidden className="absolute inset-0">
         {halo > 0 && <circle cx={c} cy={c} r={outer} className="mood-halo" />}
         {MOOD_BANDS.map((b, i) => {
@@ -109,7 +112,7 @@ function MoodGauge({
               strokeLinecap="round"
               className="mood-seg"
               data-on={i < filled || undefined}
-              style={{ transitionDelay: `${i * 50}ms` }}
+              style={{ transitionDelay: `${i * 50}ms`, animationDelay: `${i * 140}ms` }}
             />
           )
         })}
@@ -154,11 +157,14 @@ export function OpponentStage({
   state,
   animate,
   adaptation,
+  thinking = false,
 }: {
   scenario: Scenario
   state: NegotiationState
   animate: boolean
   adaptation: Adaptation
+  /** Ход отправлен, ответ ещё не пришёл. */
+  thinking?: boolean
 }) {
   const band = moodBand(state)
   const cards = xrayCards(scenario, state)
@@ -291,7 +297,7 @@ export function OpponentStage({
         <div className="grid grid-cols-[minmax(0,1fr)_176px_minmax(0,1fr)] items-center gap-5">
           <div className="grid gap-2">{cards.slice(0, 2).map((c, i) => wideCard(c, i))}</div>
           <div className="flex flex-col items-center gap-1.5 text-center">
-            <MoodGauge band={band} size={104} gap={4} stroke={5} halo={6} empty={!entered}>
+            <MoodGauge band={band} size={104} gap={4} stroke={5} halo={6} empty={!entered} thinking={thinking}>
               <Portrait name={scenario.persona.name} file={scenario.persona.portrait} size={104} />
             </MoodGauge>
             <span className="flex flex-col">
@@ -307,7 +313,7 @@ export function OpponentStage({
       {/* Узкий или невысокий экран: строка и четыре карты в ряд. */}
       <div className="relative flex flex-col gap-2.5 px-4 py-3 stage:hidden lg:px-10">
         <div className="flex items-center gap-3">
-          <MoodGauge band={band} size={42} gap={3} stroke={3} halo={0} empty={!entered}>
+          <MoodGauge band={band} size={42} gap={3} stroke={3} halo={0} empty={!entered} thinking={thinking}>
             <Portrait name={scenario.persona.name} file={scenario.persona.portrait} size={42} />
           </MoodGauge>
           <span className="flex min-w-0 flex-col">

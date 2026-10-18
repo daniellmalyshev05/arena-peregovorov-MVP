@@ -291,6 +291,22 @@ body {
   transition: fill 320ms var(--ease-out);
 }
 
+/* Вторая сторона думает: по делениям шкалы бежит тихая волна, ореол дышит. */
+@keyframes seg-wave {
+  0%, 100% { opacity: 1; }
+  45% { opacity: 0.3; }
+}
+@keyframes halo-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+.gauge-thinking .mood-seg { animation: seg-wave 1.4s ease-in-out infinite; }
+.gauge-thinking .mood-halo { animation: halo-breathe 1.8s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .gauge-thinking .mood-seg,
+  .gauge-thinking .mood-halo { animation: none; }
+}
+
 /*
   Раскрытие: плашки, закрывавшие строки, стираются слева направо,
   и под ними проступает текст.
