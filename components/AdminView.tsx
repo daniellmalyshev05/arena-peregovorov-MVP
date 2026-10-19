@@ -222,7 +222,8 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
   }
 
   const field = 'w-full min-w-0 rounded-md border border-line bg-surface px-3 py-2.5 text-small outline-none focus:border-accent-line md:py-2'
-  const briefField = needBrief ? `${field} border-accent ring-2 ring-accent/20` : field
+  // Подсветка заменяет цвет рамки, а не добавляет второй: иначе обычная рамка перебивает акцентную.
+  const briefField = needBrief ? `${field.replace('border-line', 'border-accent')} ring-2 ring-accent/20` : field
   const nameLooksLikePhrase = cfg.opponentName.trim().split(/\s+/).filter(Boolean).length > 3
   const baseFemale = isFemaleName(base.persona.name.split(' ')[0])
   const newFirst = cfg.opponentName.trim().split(/\s+/)[0] ?? ''
