@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Scenario } from '@/lib/types'
 import { loadRuns, patterns, skills, suggestScenario, type RunRecord } from '@/lib/profile'
 import { loadConfig } from '@/lib/admin/storage'
@@ -106,6 +106,23 @@ export function HallView({ scenarios }: { scenarios: Scenario[] }) {
   // иначе первый в библиотеке.
   const entry = suggested ?? scenarios.find((s) => best(s.id) === null) ?? scenarios[0]
 
+  // Сценарии лежат в одну строку: лента листается пальцем, колесом и стрелками.
+  const rail = useRef<HTMLUListElement>(null)
+  const [edge, setEdge] = useState({ start: true, end: false })
+  const onRail = () => {
+    const el = rail.current
+    if (!el) return
+    setEdge({ start: el.scrollLeft < 8, end: el.scrollLeft + el.clientWidth > el.scrollWidth - 8 })
+  }
+  useEffect(onRail, [runs])
+  const nudge = (dir: 1 | -1) => {
+    const el = rail.current
+    if (!el) return
+    const step = (el.querySelector('li')?.clientWidth ?? 300) + 12
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    el.scrollBy({ left: dir * step, behavior: reduce ? 'auto' : 'smooth' })
+  }
+
   return (
     <main className="min-h-dvh bg-paper">
       <Intro />
@@ -209,25 +226,43 @@ export function HallView({ scenarios }: { scenarios: Scenario[] }) {
           </a>
         )}
 
-        <ArcadeTeaser />
-
         <section className="mt-12">
           <div className="flex items-baseline gap-4">
             <h2 className="lbl">Сценарии</h2>
             <span className="lbl ml-auto shrink-0">
               пройдено {passed} из {scenarios.length}
             </span>
+            <span className="hidden shrink-0 gap-1.5 self-center sm:flex">
+              <button
+                type="button"
+                onClick={() => nudge(-1)}
+                disabled={edge.start}
+                aria-label="Прокрутить сценарии назад"
+                className="press flex h-8 w-8 items-center justify-center rounded-md border border-line-strong text-ink2 transition-colors hover:border-accent hover:text-accent disabled:pointer-events-none disabled:opacity-35"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5M11 6l-6 6 6 6" /></svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => nudge(1)}
+                disabled={edge.end}
+                aria-label="Прокрутить сценарии вперёд"
+                className="press flex h-8 w-8 items-center justify-center rounded-md border border-line-strong text-ink2 transition-colors hover:border-accent hover:text-accent disabled:pointer-events-none disabled:opacity-35"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+              </button>
+            </span>
           </div>
           {/* Люди, с которыми предстоит договориться. Порядок — прогрессия кейсов,
               поэтому номер остаётся на портрете. Следующий кейс вынесен наверх. */}
-          <ul className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <ul ref={rail} onScroll={onRail} data-more={!edge.end || undefined} className="hall-rail mt-4 flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1">
             {scenarios.map((s, i) => {
               if (s.id === entry.id) return null
               const score = best(s.id)
               const isNext = suggested?.id === s.id
               const done = score !== null
               return (
-                <li key={s.id} className="rise" style={{ animationDelay: `${60 + i * 50}ms` }}>
+                <li key={s.id} className="rise w-[min(340px,80vw)] shrink-0 snap-start" style={{ animationDelay: `${60 + i * 50}ms` }}>
                   <a
                     href={`/arena/${s.id}`}
                     className="press group flex h-full flex-col gap-x-5 gap-y-4 rounded-lg bg-surface p-5 shadow-[inset_0_0_0_1px_var(--color-line)] transition-shadow duration-200 hover:shadow-[inset_0_0_0_1px_var(--color-accent-line),0_12px_30px_-20px_rgba(30,92,65,0.5)]"
@@ -268,6 +303,8 @@ export function HallView({ scenarios }: { scenarios: Scenario[] }) {
             })}
           </ul>
         </section>
+
+        <ArcadeTeaser />
 
         <ul className="mt-14 grid grid-cols-1 gap-x-8 gap-y-5 border-t border-line pt-8 sm:grid-cols-3">
           {STEPS.map((s, i) => (

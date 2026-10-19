@@ -209,6 +209,11 @@ body {
 }
 .mark-dot { transform-origin: 13.2px 19.6px; animation: mark-dot 300ms var(--ease-out) 620ms both; }
 
+/* Лента сценариев в холле: без полосы прокрутки, край гаснет, пока есть что листать. */
+.hall-rail { scrollbar-width: none; }
+.hall-rail::-webkit-scrollbar { display: none; }
+.hall-rail[data-more] { mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent); }
+
 /* Заставка: знак и название по центру бумаги, затем экран открывается. */
 .intro {
   position: fixed;
