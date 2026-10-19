@@ -483,7 +483,7 @@ export function ArcadeFight({ opponentId, voice = false }: { opponentId: string;
               {voiceInput.active && (
                 <div className="arc-voice" role="status">
                   {!transcribing && <span className="voice-dot" aria-hidden />}
-                  <span className="arc-voice-label">{transcribing ? 'Распознаём…' : 'Говорите…'}</span>
+                  <span className={`arc-voice-label${transcribing ? '' : ' is-speaking'}`}>{transcribing ? 'Распознаём…' : 'Говорите…'}</span>
                   <VoiceMeter ref={voiceInput.meterRef} busy={transcribing} className="arc-voice-meter" />
                   {voiceInput.status === 'recording' && (
                     <>

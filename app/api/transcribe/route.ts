@@ -15,6 +15,11 @@ const TIMEOUT_MS = 15_000
  * Такой ответ целиком — не речь игрока.
  */
 const PHANTOM = /^(субтитры .*|продолжение следует\.*|спасибо за просмотр!?\.*|редактор субтитров .*)$/i
+/**
+ * На шуме и музыке модель выдаёт английскую «болванку» вроде «The quick brown fox».
+ * Реплика в русских переговорах без единой кириллической буквы — не речь игрока.
+ */
+const CYRILLIC = /[а-яё]/i
 
 function formatOf(type: string): string | null {
   if (type.includes('webm')) return 'webm'
@@ -71,7 +76,7 @@ export async function POST(req: Request) {
       }
       const json = (await res.json()) as { text?: unknown }
       const text = typeof json.text === 'string' ? json.text.trim() : ''
-      return NextResponse.json({ text: PHANTOM.test(text) ? '' : text })
+      return NextResponse.json({ text: PHANTOM.test(text) || !CYRILLIC.test(text) ? '' : text })
     } catch (e) {
       const err = e as Error
       lastError = `${model}: ${err.name === 'AbortError' ? `таймаут ${TIMEOUT_MS / 1000} с` : `сеть: ${err.message}`}`

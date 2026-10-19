@@ -430,7 +430,6 @@ body {
 .voice-ring {
   position: absolute;
   inset: 0;
-  border-radius: inherit;
   pointer-events: none;
   transition: transform 90ms linear, opacity 90ms linear;
 }

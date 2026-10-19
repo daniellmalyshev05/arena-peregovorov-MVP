@@ -991,6 +991,11 @@
 }
 .arc .voice-dot { background: var(--hit); }
 .arc-voice-label { flex-shrink: 0; font-size: 16px; color: #fff; }
+/* На узком телефоне место отдаём полоскам: точка записи и таймер говорят сами. */
+@media (max-width: 479px) {
+  .arc-voice { padding: 0 14px; gap: 10px; }
+  .arc-voice-label.is-speaking { display: none; }
+}
 .arc-voice-meter { flex: 1; min-width: 0; color: var(--you); }
 .arc-voice-time { flex-shrink: 0; font-size: 15px; color: var(--mist); font-variant-numeric: tabular-nums; }
 .arc-voice-hint { display: none; flex-shrink: 0; font-size: 13px; color: #8b93c9; }

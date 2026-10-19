@@ -1095,7 +1095,8 @@ export function ArenaClient({
                 {voiceInput.active && (
                   <div role="status" className="rise flex min-h-[44px] min-w-0 flex-1 items-center gap-2.5 px-2.5">
                     {voiceInput.status !== 'transcribing' && <span className="voice-dot" aria-hidden />}
-                    <span className="shrink-0 text-small text-ink">
+                    {/* На телефоне место отдаём полоскам: точка записи и таймер говорят сами. */}
+                    <span className={`shrink-0 text-small text-ink ${voiceInput.status === 'transcribing' ? '' : 'hidden sm:inline'}`}>
                       {voiceInput.status === 'transcribing' ? 'Распознаём…' : 'Говорите…'}
                     </span>
                     <VoiceMeter
