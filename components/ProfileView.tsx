@@ -7,6 +7,7 @@ import { adaptationLevel, adaptationTargets, computeAdaptation, forecastAdaptati
 import { count, plural } from '@/lib/plural'
 import { num } from '@/lib/text'
 import { SkillMedal } from './SkillMedal'
+import { loadCustomCases } from '@/lib/admin/custom'
 
 const SKILL_STATUS: Record<string, string> = {
   untested: 'не проверялся',
@@ -32,9 +33,12 @@ export function ProfileView({ scenarios }: { scenarios: Scenario[] }) {
   const [runs, setRuns] = useState<RunRecord[]>([])
   const [ready, setReady] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
+  // Сгенерированные кейсы библиотека не знает: их названия берутся из хранилища браузера.
+  const [customTitles, setCustomTitles] = useState<Record<string, string>>({})
 
   useEffect(() => {
     setRuns(loadRuns())
+    setCustomTitles(Object.fromEntries(loadCustomCases().map((c) => [c.scenario.id, c.scenario.title])))
     setReady(true)
   }, [])
 
@@ -47,7 +51,7 @@ export function ProfileView({ scenarios }: { scenarios: Scenario[] }) {
   const forecast = forecastAdaptation(runs)
   const weak = found.filter((p) => p.tone === 'weak')
   const strong = found.filter((p) => p.tone === 'strong')
-  const name = (id: string) => scenarios.find((s) => s.id === id)?.title ?? id
+  const name = (id: string) => scenarios.find((s) => s.id === id)?.title ?? customTitles[id] ?? id
 
   return (
     <main className="min-h-dvh bg-paper">

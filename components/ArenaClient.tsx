@@ -77,11 +77,14 @@ export function ArenaClient({
   scenario,
   configCode,
   voice = false,
+  customBase,
 }: {
   scenario: Scenario
   configCode?: string
   /** Распознавание голоса доступно на сервере. */
   voice?: boolean
+  /** Сгенерированный кейс до настройки: сервер его не знает и получает с каждым ходом. */
+  customBase?: Scenario
 }) {
   const [state, setState] = useState<NegotiationState>(() => createInitialState(scenario))
 
@@ -297,6 +300,7 @@ export function ArenaClient({
             factPlayed: pendingFact,
             adaptation,
             forceOffline,
+            scenario: customBase,
           }),
         })
 
@@ -343,7 +347,7 @@ export function ArenaClient({
         inputRef.current?.focus()
       }
     },
-    [adaptation, busy, configCode, finish, mode, pendingFact, scenario.id, scenario.maxRounds, state],
+    [adaptation, busy, configCode, customBase, finish, mode, pendingFact, scenario.id, scenario.maxRounds, state],
   )
 
   const setConfidence = (id: string, confidence: number) => {

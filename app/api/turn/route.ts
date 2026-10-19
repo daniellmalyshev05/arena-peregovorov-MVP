@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getScenario } from '@/lib/scenarios'
+import { checkCustomScenario, CUSTOM_PREFIX } from '@/lib/admin/scenario-schema'
 import { applyConfig } from '@/lib/admin/config'
 import { decodeConfig } from '@/lib/admin/link'
 import { applyTurn, evaluateOffer, grantLeaked, sanitizeOffer, type LlmTurnOutput } from '@/lib/engine/state'
@@ -37,6 +38,11 @@ interface TurnRequest {
   adaptation?: Adaptation
   /** Принудительно играть запасным движком, не обращаясь к модели. */
   forceOffline?: boolean
+  /**
+   * Сгенерированный кейс целиком: сервер его не хранит, поэтому кейс приходит
+   * с каждым ходом и каждый раз проверяется заново.
+   */
+  scenario?: unknown
 }
 
 export async function POST(req: Request) {
@@ -47,7 +53,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'bad json' }, { status: 400 })
   }
 
-  const base = getScenario(body.scenarioId)
+  const custom =
+    typeof body.scenarioId === 'string' && body.scenarioId.startsWith(CUSTOM_PREFIX)
+      ? checkCustomScenario(body.scenario)
+      : null
+  const base = getScenario(body.scenarioId) ?? (custom?.id === body.scenarioId ? custom : undefined)
   if (!base) return NextResponse.json({ error: 'unknown scenario' }, { status: 404 })
 
   // Сервер играет тот же кейс, что видит участник: вердикты и промпт
