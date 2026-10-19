@@ -13,6 +13,7 @@ import { ScenarioMap } from './ScenarioMap'
 import { CaseGenerator } from './CaseGenerator'
 import { loadCustomCases, removeCustom, saveCustom, type CustomCase } from '@/lib/admin/custom'
 import { CUSTOM_PREFIX } from '@/lib/admin/scenario-schema'
+import { CASE_HASH, encodeCase } from '@/lib/admin/share'
 
 /**
  * Контур администратора (ТЗ §2.2, §2.3).
@@ -96,8 +97,21 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
   // Новый кейс сервер не знает, поэтому он открывается своей страницей;
   // настройка к нему читается из браузера.
   const playHref = isCustom ? `/arena/custom?id=${base.id}` : `/arena/${base.id}?cfg=${encodeConfig(base, cfg, mode)}`
+  // Новый кейс едет в ссылке целиком: сжатие асинхронное, поэтому ссылка
+  // собирается эффектом.
+  const [caseLink, setCaseLink] = useState('')
+  useEffect(() => {
+    if (!isCustom || !origin) return
+    let alive = true
+    void encodeCase(base, cfg, mode).then((code) => {
+      if (alive) setCaseLink(`${origin}/arena/custom${CASE_HASH}${code}`)
+    })
+    return () => {
+      alive = false
+    }
+  }, [isCustom, origin, base, cfg, mode])
   // Ссылка пересобирается на каждое изменение: администратор всегда копирует то, что видит.
-  const link = origin ? `${origin}${playHref}` : ''
+  const link = !origin ? '' : isCustom ? caseLink : `${origin}${playHref}`
 
   const created = (entry: CustomCase) => {
     saveCustom(entry)
@@ -205,6 +219,17 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                     >
                       Играть
                     </a>
+                    <button
+                      onClick={copyLink}
+                      disabled={!link}
+                      className={`press h-11 rounded-md border px-3.5 text-caption font-semibold md:h-9 ${
+                        copied
+                          ? 'border-accent bg-surface text-accent'
+                          : 'border-line-strong bg-surface text-ink2 hover:border-accent hover:text-accent'
+                      }`}
+                    >
+                      {copied ? 'Скопирована' : 'Скопировать ссылку'}
+                    </button>
                     <button
                       onClick={downloadCase}
                       className="press h-11 rounded-md border border-line-strong bg-surface px-3.5 text-caption font-semibold text-ink2 hover:border-accent hover:text-accent md:h-9"

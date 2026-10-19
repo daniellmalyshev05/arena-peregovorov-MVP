@@ -14,7 +14,7 @@ import { LAYERS } from './draft'
  */
 
 const text = (max: number) => z.string().min(1).max(max)
-const id = z.string().regex(/^[a-z0-9_-]{1,40}$/)
+const id = z.string().regex(/^[A-Za-z0-9_-]{1,40}$/)
 const value = z.number().min(0).max(100)
 const weight = z.number().min(0).max(1)
 

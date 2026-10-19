@@ -4,15 +4,19 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import type { Scenario } from '@/lib/types'
 import { encodeConfig } from '@/lib/admin/link'
-import { tunedScenario } from '@/lib/admin/storage'
-import { loadCustom } from '@/lib/admin/custom'
+import { applyConfig } from '@/lib/admin/config'
+import { saveConfig, saveMode, tunedScenario } from '@/lib/admin/storage'
+import { loadCustom, saveCustom } from '@/lib/admin/custom'
+import { CASE_HASH, decodeCase } from '@/lib/admin/share'
 import { ArenaClient } from './ArenaClient'
 
 /**
- * Вход в сгенерированный кейс: `/arena/custom?id=…`.
+ * Вход в сгенерированный кейс.
  *
- * Кейс лежит в браузере, поэтому экран рисуется после чтения на клиенте.
- * Настройка администратора применяется так же, как к кейсам библиотеки.
+ * `/arena/custom?id=…` — кейс из этого браузера, его открывает администратор.
+ * `/arena/custom#case=…` — ссылка для участников: кейс и настройка в самом
+ * адресе. Такой кейс проверяется заново и сохраняется в браузере участника,
+ * чтобы партия пережила перезагрузку и попала в профиль под своим названием.
  */
 export function CustomEntry({ voice }: { voice: boolean }) {
   const [resolved, setResolved] = useState<
@@ -20,14 +24,46 @@ export function CustomEntry({ voice }: { voice: boolean }) {
   >(null)
 
   useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get('id')
-    const base = id ? loadCustom(id) : null
-    if (!base) {
-      setResolved('missing')
-      return
+    let alive = true
+    const open = async () => {
+      const hash = window.location.hash
+      if (hash.startsWith(CASE_HASH)) {
+        const shared = await decodeCase(hash.slice(CASE_HASH.length))
+        if (!alive) return
+        if (!shared) {
+          setResolved('missing')
+          return
+        }
+        const base = shared.scenario
+        saveCustom({ scenario: base, brief: { sphere: '', topic: '', goal: '' }, createdAt: Date.now() })
+        if (shared.link) {
+          // Как у ссылки с `cfg`: настройка из адреса важнее сохранённой.
+          saveConfig(shared.link.cfg)
+          saveMode(shared.link.mode, base.id)
+          setResolved({
+            base,
+            scenario: applyConfig(base, shared.link.cfg),
+            configCode: encodeConfig(base, shared.link.cfg),
+          })
+          return
+        }
+        setResolved({ base, scenario: base })
+        return
+      }
+
+      const id = new URLSearchParams(window.location.search).get('id')
+      const base = id ? loadCustom(id) : null
+      if (!base) {
+        setResolved('missing')
+        return
+      }
+      const tuned = tunedScenario(base)
+      setResolved({ base, scenario: tuned.scenario, configCode: tuned.cfg ? encodeConfig(base, tuned.cfg) : undefined })
     }
-    const tuned = tunedScenario(base)
-    setResolved({ base, scenario: tuned.scenario, configCode: tuned.cfg ? encodeConfig(base, tuned.cfg) : undefined })
+    void open()
+    return () => {
+      alive = false
+    }
   }, [])
 
   if (!resolved) return <div className="min-h-dvh bg-paper" />
