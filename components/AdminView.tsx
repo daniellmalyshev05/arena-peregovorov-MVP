@@ -11,6 +11,7 @@ import { auditScenario } from '@/lib/engine/audit'
 import { num, signed } from '@/lib/text'
 import { ScenarioMap } from './ScenarioMap'
 import { CaseGenerator } from './CaseGenerator'
+import { LibraryPassport } from './LibraryPassport'
 import { loadCustomCases, removeCustom, saveCustom, type CustomCase } from '@/lib/admin/custom'
 import { CUSTOM_PREFIX } from '@/lib/admin/scenario-schema'
 import { CASE_HASH, encodeCase } from '@/lib/admin/share'
@@ -476,6 +477,8 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
               <span className="lbl mb-1.5 block">Раундов в сессии</span>
               <input type="number" min={4} max={24} className={field} value={cfg.rounds} onChange={(e) => set('rounds', Number(e.target.value))} />
             </label>
+
+            <LibraryPassport scenarios={scenarios} custom={custom} onImported={created} />
           </div>
 
           {/* Проверка */}
