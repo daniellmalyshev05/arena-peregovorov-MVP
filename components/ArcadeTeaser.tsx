@@ -1,65 +1,48 @@
-'use client'
-
 import '@fontsource/dela-gothic-one/cyrillic-400.css'
-import { useEffect, useState } from 'react'
 import { arcadeOpponents, type ArcadeLevel } from '@/lib/arcade/opponents'
-import { bestTimes, clock } from '@/lib/arcade/records'
 
-const LEVEL: Record<ArcadeLevel, { label: string; className: string }> = {
-  easy: { label: 'Лёгкий', className: 'bg-[#3fd9c9] text-[#141a3c]' },
-  medium: { label: 'Средний', className: 'bg-[#ffd23f] text-[#141a3c]' },
-  boss: { label: 'Босс', className: 'bg-[#ff4b3e] text-white' },
+/** Сложность соперника — цветом кольца вокруг портрета, без подписи. */
+const RING: Record<ArcadeLevel, string> = {
+  easy: '#3fd9c9',
+  medium: '#ffd23f',
+  boss: '#ff4b3e',
 }
 
 /**
  * Раздел аркады в холле — второй уровень рядом со «Сценариями»: тот же
- * заголовок, а соперники лежат в зоне, которая начинается цветом продукта
- * и уходит в ночную палитру аркады. Плитка ведёт прямо к сопернику.
+ * заголовок, а зона начинается цветом продукта и уходит в ночную палитру
+ * аркады. Ведёт в лобби аркады, где выбирают соперника.
  */
 export function ArcadeTeaser() {
-  const [best, setBest] = useState<Record<string, number>>({})
-  useEffect(() => setBest(bestTimes()), [])
-
   return (
     <section className="mt-12" aria-labelledby="hall-arcade">
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <h2 id="hall-arcade" className="lbl">
           Аркада
         </h2>
-        <span className="lbl sm:ml-auto">три соперника, две минуты на переговоры</span>
+        <span className="lbl sm:ml-auto">Более динамичный режим</span>
       </div>
-      <ul className="mt-4 grid grid-cols-1 gap-2.5 rounded-lg bg-[linear-gradient(135deg,#1e5c41_0%,#141a3c_70%)] p-2.5 sm:grid-cols-3 sm:gap-3 sm:p-3">
-        {arcadeOpponents.map((o) => {
-          const level = LEVEL[o.level]
-          const record = best[o.scenario.id]
-          return (
-            <li key={o.scenario.id}>
-              <a
-                href={`/arcade/${o.scenario.id}`}
-                className="press flex h-full items-start gap-3.5 rounded-md border border-white/10 bg-white/[0.06] p-3.5 text-white transition-colors duration-200 sm:flex-col sm:gap-3 sm:p-4 [@media(hover:hover)_and_(pointer:fine)]:hover:border-[#ffd23f] [@media(hover:hover)_and_(pointer:fine)]:hover:bg-white/[0.1]"
-              >
-                <img
-                  src={`/arcade/thumb-${o.scenario.persona.portrait}`}
-                  alt=""
-                  width={56}
-                  height={56}
-                  className="h-14 w-14 shrink-0 rounded-full border-2 border-white/20 object-cover"
-                />
-                <span className="flex min-w-0 flex-col items-start gap-1.5">
-                  <span className={`rounded px-2 py-0.5 font-['Dela_Gothic_One'] text-[11px] leading-[1.4] ${level.className}`}>
-                    {level.label}
-                  </span>
-                  <span className="font-['Dela_Gothic_One'] text-[17px] leading-tight">{o.scenario.title}</span>
-                  <span className="text-small leading-snug text-[#c3cbf0] text-pretty">{o.situation}</span>
-                  {record !== undefined && (
-                    <span className="text-caption font-semibold text-[#ffd23f] tabular-nums">Лучшее: {clock(record)}</span>
-                  )}
-                </span>
-              </a>
-            </li>
-          )
-        })}
-      </ul>
+      <a
+        href="/arcade"
+        className="press group mt-4 flex flex-col items-center gap-5 rounded-lg bg-[linear-gradient(135deg,#1e5c41_0%,#141a3c_70%)] px-5 py-6 sm:flex-row sm:justify-between sm:px-7"
+      >
+        <span className="flex items-center gap-3 sm:gap-4">
+          {arcadeOpponents.map((o) => (
+            <img
+              key={o.scenario.id}
+              src={`/arcade/thumb-${o.scenario.persona.portrait}`}
+              alt={o.scenario.title}
+              width={72}
+              height={72}
+              className="h-16 w-16 rounded-full object-cover transition-transform duration-200 sm:h-[72px] sm:w-[72px] [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.04]"
+              style={{ boxShadow: `0 0 0 3px #141a3c, 0 0 0 6px ${RING[o.level]}` }}
+            />
+          ))}
+        </span>
+        <span className="flex h-12 w-full items-center justify-center rounded-md bg-[#ffd23f] px-8 font-['Dela_Gothic_One'] text-[16px] text-[#141a3c] transition-colors sm:w-auto [@media(hover:hover)_and_(pointer:fine)]:group-hover:bg-[#ffdc66]">
+          Играть
+        </span>
+      </a>
     </section>
   )
 }

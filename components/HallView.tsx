@@ -59,10 +59,12 @@ function CaseTags({
   scenario,
   tuned,
   recommended,
+  withSkill = true,
 }: {
   scenario: Scenario
   tuned: { id: string; difficulty: number } | null
   recommended: boolean
+  withSkill?: boolean
 }) {
   const tone = TONES.find((t) => t.value === scenario.archetype)?.label
   return (
@@ -70,9 +72,11 @@ function CaseTags({
       {recommended && (
         <span className="lbl rounded-full bg-accent-soft px-2 py-0.5 text-accent">рекомендуем</span>
       )}
-      <span className="rounded-md border border-line px-2 py-0.5 text-caption text-ink2">
-        навык: {SKILLS[scenario.id] ?? 'вести деловые переговоры'}
-      </span>
+      {withSkill && (
+        <span className="rounded-md border border-line px-2 py-0.5 text-caption text-ink2">
+          навык: {SKILLS[scenario.id] ?? 'вести деловые переговоры'}
+        </span>
+      )}
       {tone && <span className="rounded-full bg-line2 px-2 py-0.5 text-caption text-ink2">{tone}</span>}
       {tuned?.id === scenario.id && (
         <span className="lbl rounded-full border border-line-strong px-2 py-0.5 text-ink3">
@@ -265,29 +269,34 @@ export function HallView({ scenarios }: { scenarios: Scenario[] }) {
                 <li key={s.id} className="rise w-[min(340px,80vw)] shrink-0 snap-start" style={{ animationDelay: `${60 + i * 50}ms` }}>
                   <a
                     href={`/arena/${s.id}`}
-                    className="press group flex h-full flex-col gap-x-5 gap-y-4 rounded-lg bg-surface p-5 shadow-[inset_0_0_0_1px_var(--color-line)] transition-shadow duration-200 hover:shadow-[inset_0_0_0_1px_var(--color-accent-line),0_12px_30px_-20px_rgba(30,92,65,0.5)]"
+                    className="press group flex h-full flex-col rounded-lg bg-surface p-5 shadow-[inset_0_0_0_1px_var(--color-line)] transition-shadow duration-200 hover:shadow-[inset_0_0_0_1px_var(--color-accent-line),0_12px_30px_-20px_rgba(30,92,65,0.5)]"
                   >
-                    <span className="flex min-w-0 flex-1 items-start gap-4">
+                    {/* Шапка, заголовок и описание держат одинаковую высоту во всех
+                        карточках ленты, поэтому метки и низ встают на одну линию. */}
+                    <span className="flex items-center gap-3.5">
                       <span className="relative shrink-0">
-                        <Portrait name={s.persona.name} file={s.persona.portrait} size={64} active={isNext} />
+                        <Portrait name={s.persona.name} file={s.persona.portrait} size={56} active={isNext} />
                         <ProgressBadge n={i + 1} done={done} next={isNext} />
                       </span>
-                      <span className="flex min-w-0 flex-col gap-1">
-                        <span className="text-caption text-ink3">
-                          {s.persona.name} · {s.persona.role}
-                        </span>
-                        <span className="text-title font-medium tracking-[-0.01em] text-balance transition-colors group-hover:text-accent">
-                          {s.title}
-                        </span>
-                        <span className="mt-0.5 text-small text-ink2 text-pretty">{s.subtitle}</span>
-                        <CaseTags scenario={s} tuned={tuned} recommended={isNext} />
+                      <span className="line-clamp-2 min-w-0 text-caption text-ink3">
+                        {s.persona.name} · {s.persona.role}
                       </span>
                     </span>
-                    <span className="mt-auto flex items-end justify-between gap-4">
+                    <span className="mt-4 line-clamp-2 min-h-[2lh] text-title font-medium leading-snug tracking-[-0.01em] text-balance transition-colors group-hover:text-accent">
+                      {s.title}
+                    </span>
+                    <span className="mt-1.5 line-clamp-2 min-h-[2lh] text-small text-ink2">{s.subtitle}</span>
+                    <span className="mt-3 truncate text-caption text-ink2">
+                      Навык: {SKILLS[s.id] ?? 'вести деловые переговоры'}
+                    </span>
+                    <span className="min-h-[30px]">
+                      <CaseTags scenario={s} tuned={tuned} recommended={isNext} withSkill={false} />
+                    </span>
+                    <span className="mt-4 flex items-center justify-between gap-4 border-t border-line2 pt-4">
                       {score !== null ? (
-                        <span>
-                          <span className="mono block text-lead font-semibold leading-none">{score}</span>
-                          <span className="lbl mt-1 block">лучший балл</span>
+                        <span className="flex items-baseline gap-2">
+                          <span className="mono text-lead font-semibold leading-none">{score}</span>
+                          <span className="lbl">лучший балл</span>
                         </span>
                       ) : (
                         <span />
