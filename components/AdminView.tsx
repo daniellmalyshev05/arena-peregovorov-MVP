@@ -201,11 +201,12 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
         <a href="/" aria-label="К списку сценариев" className="press tap -ml-1.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-ink2 hover:bg-line2 md:ml-0 md:h-8 md:w-8">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
         </a>
-        <span className="font-semibold">Настройка симуляции</span>
+        <span className="truncate font-semibold">Настройка симуляции</span>
         <span className="hidden text-ink3 lg:inline">·</span>
         <span className="hidden text-small text-ink2 lg:inline">контур администратора</span>
         {saved && (
-          <span className="num ml-auto rounded-sm bg-accent-soft px-2 py-1 text-caption font-semibold text-accent">
+          // На телефоне состояние и так видно в нижней полосе, а в шапке подпись не помещается.
+          <span className="num ml-auto hidden shrink-0 whitespace-nowrap rounded-sm bg-accent-soft px-2 py-1 text-caption font-semibold text-accent sm:inline">
             настройка активна
           </span>
         )}
@@ -291,12 +292,23 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                       Удалить
                     </button>
                   </div>
-                  <button
-                    onClick={() => setShowLibrary((v) => !v)}
-                    className="press mt-1.5 flex min-h-11 items-center text-caption font-semibold text-accent hover:underline md:min-h-0"
-                  >
-                    {showLibrary ? 'Свернуть библиотеку' : 'Выбрать кейс самому'}
-                  </button>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                    <button
+                      onClick={() => setShowLibrary((v) => !v)}
+                      className="press flex min-h-11 items-center text-caption font-semibold text-accent hover:underline md:min-h-0"
+                    >
+                      {showLibrary ? 'Свернуть библиотеку' : 'Выбрать кейс самому'}
+                    </button>
+                    {/* Описание поменяли, а держится созданный кейс: путь назад к подбору. */}
+                    {query && (
+                      <button
+                        onClick={() => { setManual(false); useCase(match.scenario); setSaved(false) }}
+                        className="press flex min-h-11 items-center text-caption text-ink3 hover:text-accent md:min-h-0"
+                      >
+                        Вернуть подбор по описанию
+                      </button>
+                    )}
+                  </div>
                 </div>
               ) : (
               /* Результат подбора: какой кейс выбран и по каким словам. */

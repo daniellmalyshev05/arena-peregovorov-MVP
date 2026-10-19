@@ -118,12 +118,12 @@ export function LibraryPassport({
 
       {open && (
         <div className="rise mt-4 overflow-x-auto rounded-md border border-line bg-surface">
-          <table className="w-full min-w-[520px] text-left text-small">
+          <table className="w-full text-left text-small">
             <thead>
               <tr className="border-b border-line">
                 <th className="lbl px-3.5 py-2.5 font-semibold">Кейс</th>
                 <th className="lbl px-3 py-2.5 text-right font-semibold">Зона соглашения</th>
-                <th className="lbl px-3 py-2.5 text-right font-semibold">Позиционный торг</th>
+                <th className="lbl hidden px-3 py-2.5 text-right font-semibold sm:table-cell">Позиционный торг</th>
                 <th className="lbl px-3.5 py-2.5 font-semibold">Аудит</th>
               </tr>
             </thead>
@@ -131,15 +131,15 @@ export function LibraryPassport({
               {rows.map((r) => (
                 <tr key={`${r.kind}-${r.scenario.id}`} className="border-b border-line2 last:border-0">
                   <td className="px-3.5 py-2.5">
-                    <span className="text-ink">{r.scenario.title}</span>
-                    <span className="lbl ml-2 whitespace-nowrap">{r.kind}</span>
+                    <span className="block text-ink">{r.scenario.title}</span>
+                    <span className="lbl mt-0.5 block">{r.kind}</span>
                   </td>
                   <td className="num px-3 py-2.5 text-right text-ink2">{r.audit ? `${num(r.audit.zopa * 100)}%` : '…'}</td>
-                  <td className="num px-3 py-2.5 text-right text-ink2">{r.audit ? signed(r.audit.positional) : '…'}</td>
+                  <td className="num hidden px-3 py-2.5 text-right text-ink2 sm:table-cell">{r.audit ? signed(r.audit.positional) : '…'}</td>
                   <td className="px-3.5 py-2.5">
                     {r.audit &&
                       (r.audit.playable ? (
-                        <span className="inline-flex items-center gap-1.5 text-accent">
+                        <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-accent">
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                             <path d="M20 6L9 17l-5-5" />
                           </svg>

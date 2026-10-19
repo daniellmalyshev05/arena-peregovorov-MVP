@@ -61,8 +61,13 @@ export function CustomEntry({ voice }: { voice: boolean }) {
       setResolved({ base, scenario: tuned.scenario, configCode: tuned.cfg ? encodeConfig(base, tuned.cfg) : undefined })
     }
     void open()
+    // Новая ссылка, вставленная в адрес открытой страницы, меняет только `#`:
+    // браузер не перезагружает страницу, поэтому перезагружаем сами.
+    const onHash = () => window.location.reload()
+    window.addEventListener('hashchange', onHash)
     return () => {
       alive = false
+      window.removeEventListener('hashchange', onHash)
     }
   }, [])
 
