@@ -9,6 +9,8 @@ import { count } from '@/lib/plural'
 import { Mark } from './Mark'
 import { Portrait } from './Portrait'
 import { SkillMedal } from './SkillMedal'
+import { ArcadeTeaser } from './ArcadeTeaser'
+import { Intro } from './Intro'
 
 /**
  * Как это работает — тремя шагами под сценариями. Первый экран отдан людям.
@@ -106,6 +108,7 @@ export function HallView({ scenarios }: { scenarios: Scenario[] }) {
 
   return (
     <main className="min-h-dvh bg-paper">
+      <Intro />
       <div className="mx-auto max-w-[900px] px-6 py-12 sm:px-8 sm:py-16">
         <div className="rise flex items-center gap-2.5">
           <Mark size={24} animate />
@@ -141,9 +144,10 @@ export function HallView({ scenarios }: { scenarios: Scenario[] }) {
         </p>
 
         {/* Следующие переговоры — главный вход: человек, с которым предстоит договориться. */}
+        <p className="lbl rise mt-8">Обучающий симулятор</p>
         <a
           href={`/arena/${entry.id}`}
-          className="rise press group mt-8 flex flex-col gap-5 rounded-lg bg-surface p-5 shadow-[inset_0_0_0_1px_var(--color-accent-line),0_18px_40px_-28px_rgba(30,92,65,0.55)] transition-shadow duration-200 hover:shadow-[inset_0_0_0_1px_var(--color-accent),0_18px_40px_-24px_rgba(30,92,65,0.6)] sm:flex-row sm:items-center sm:p-6"
+          className="rise press group mt-2.5 flex flex-col gap-5 rounded-lg bg-surface p-5 shadow-[inset_0_0_0_1px_var(--color-accent-line),0_18px_40px_-28px_rgba(30,92,65,0.55)] transition-shadow duration-200 hover:shadow-[inset_0_0_0_1px_var(--color-accent),0_18px_40px_-24px_rgba(30,92,65,0.6)] sm:flex-row sm:items-center sm:p-6"
         >
           <span className="flex min-w-0 flex-1 items-start gap-4 sm:items-center sm:gap-5">
             <span className="relative shrink-0">
@@ -204,6 +208,8 @@ export function HallView({ scenarios }: { scenarios: Scenario[] }) {
             </span>
           </a>
         )}
+
+        <ArcadeTeaser />
 
         <section className="mt-12">
           <div className="flex items-baseline gap-4">
