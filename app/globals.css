@@ -417,6 +417,35 @@ body {
 }
 
 /*
+  Админка. Зона соглашения и пороги на карте едут к новым значениям, когда
+  меняется сложность: так видно, что настройка меняет расчёт.
+*/
+.map-shift {
+  transform-box: view-box;
+  transform-origin: 0 0;
+  transition: transform 240ms var(--ease-out);
+}
+/* Этап готов: галочка впрыгивает. */
+@keyframes step-pop {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: none; }
+}
+.step-pop { animation: step-pop 160ms var(--ease-out) both; }
+/* Кейс только что создан: рамка коротко вспыхивает один раз. */
+@keyframes case-fresh {
+  0% { box-shadow: 0 0 0 0 var(--color-accent); }
+  30% { box-shadow: 0 0 0 3px var(--color-accent); }
+  100% { box-shadow: 0 0 0 3px transparent; }
+}
+.case-fresh { animation: case-fresh 600ms var(--ease-out) 200ms both; }
+/* Подпись кнопки сменилась: новая проявляется, а не подменяется рывком. */
+@keyframes swap-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: none; }
+}
+.swap-in { animation: swap-in 150ms var(--ease-out) both; }
+
+/*
   Голосовой ввод. Кнопку держат пальцем: без выделения, системного меню и
   прокрутки. Уровень голоса хук пишет в transform на каждом кадре, короткий
   линейный переход сглаживает ступеньки.

@@ -35,6 +35,12 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
   const [showLibrary, setShowLibrary] = useState(false)
   // Кейсы, созданные по описанию: лежат в этом браузере.
   const [custom, setCustom] = useState<CustomCase[]>([])
+  // Только что созданный кейс коротко подсвечивается — связь между «модель написала» и результатом.
+  const [freshId, setFreshId] = useState<string | null>(null)
+  // Удаление отменяемо пять секунд: кейс стоил полминуты генерации.
+  const [undo, setUndo] = useState<{ entry: CustomCase; cfg: AdminConfig } | null>(null)
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => () => clearTimeout(undoTimer.current), [])
 
   useEffect(() => {
     const created = loadCustomCases()
@@ -121,15 +127,43 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
     setShowLibrary(false)
     useCase(entry.scenario)
     setSaved(false)
+    setFreshId(entry.scenario.id)
+    setUndo(null)
+  }
+
+  /** Загруженный файл — внизу страницы, а карточка кейса наверху: показываем, куда он попал. */
+  const imported = (entry: CustomCase) => {
+    created(entry)
+    requestAnimationFrame(() => {
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      document.getElementById('admin-case')?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
+    })
   }
 
   const removeCase = () => {
+    const entry = custom.find((c) => c.scenario.id === base.id)
+    if (entry) {
+      setUndo({ entry, cfg })
+      clearTimeout(undoTimer.current)
+      undoTimer.current = setTimeout(() => setUndo(null), 5000)
+    }
     removeCustom(base.id)
     setCustom(loadCustomCases())
     if (loadConfig()?.baseScenarioId === base.id) clearConfig()
     setManual(false)
     useCase(match.scenario)
     setSaved(false)
+  }
+
+  const restoreCase = () => {
+    if (!undo) return
+    saveCustom(undo.entry)
+    setCustom(loadCustomCases())
+    setManual(true)
+    setCfg(undo.cfg)
+    setSaved(false)
+    setUndo(null)
+    clearTimeout(undoTimer.current)
   }
 
   const downloadCase = () => {
@@ -178,11 +212,12 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
       </header>
 
       {!ready ? null : (
-        <div className="mx-auto grid max-w-[1180px] grid-cols-1 gap-8 px-5 py-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,460px)] lg:px-8">
+        <>
+        <div className="mx-auto grid max-w-[1180px] grid-cols-1 gap-8 px-5 pb-28 pt-8 lg:pb-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,460px)] lg:px-8">
           {/* Настройки */}
           <div className="flex flex-col gap-6">
             <div>
-              <div className="lbl mb-2">Контекст симуляции</div>
+              <div className="lbl mb-2"><span className="text-accent">1</span> · Контекст симуляции</div>
               <p className="mb-3 text-caption leading-snug text-ink3">
                 Опишите ситуацию своими словами. По описанию подбирается кейс из библиотеки — тот, у которого
                 совпадают предмет торга, роли и интересы сторон.
@@ -202,8 +237,20 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                 <textarea className={field} rows={2} value={cfg.opponentGoal} onChange={(e) => set('opponentGoal', e.target.value)} placeholder="Например: поднять тариф на 15% и не обсуждать объёмы" />
               </label>
 
+              <div id="admin-case" className="lbl mt-6 scroll-mt-20"><span className="text-accent">2</span> · Кейс</div>
+              {undo && (
+                <div role="status" className="rise mt-2 flex items-center gap-3 rounded-md border border-line bg-surface px-3.5 py-1.5 text-caption md:py-1">
+                  <span className="text-ink2">Кейс удалён</span>
+                  <button onClick={restoreCase} className="press flex min-h-11 items-center font-semibold text-accent hover:underline md:min-h-8">
+                    Вернуть
+                  </button>
+                </div>
+              )}
               {isCustom ? (
-                <div className="rise mt-4 rounded-md border border-accent-line bg-accent-soft px-4 py-3.5">
+                <div
+                  key={base.id}
+                  className={`rise mt-2 rounded-md border border-accent-line bg-accent-soft px-4 py-3.5 ${freshId === base.id ? 'case-fresh' : ''}`}
+                >
                   <div className="lbl mb-1.5">Новый кейс</div>
                   <div className="text-small font-semibold">{base.title}</div>
                   <div className="mt-0.5 text-caption text-ink3">{base.subtitle}</div>
@@ -214,8 +261,8 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                     <a
                       href={playHref}
                       onClick={() => saveConfig(cfg)}
-                      className={`press inline-flex h-11 items-center rounded-md px-4 text-caption font-semibold text-white md:h-9 ${
-                        audit.playable ? 'bg-accent hover:opacity-90' : 'pointer-events-none bg-ink3'
+                      className={`press inline-flex h-11 items-center rounded-md border px-4 text-caption font-semibold md:h-9 ${
+                        audit.playable ? 'border-accent bg-surface text-accent hover:bg-accent-soft' : 'pointer-events-none border-line bg-surface text-ink3'
                       }`}
                     >
                       Играть
@@ -229,7 +276,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                           : 'border-line-strong bg-surface text-ink2 hover:border-accent hover:text-accent'
                       }`}
                     >
-                      {copied ? 'Скопирована' : 'Скопировать ссылку'}
+                      <CopyLabel copied={copied} idle="Скопировать ссылку" />
                     </button>
                     <button
                       onClick={downloadCase}
@@ -254,7 +301,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
               ) : (
               /* Результат подбора: какой кейс выбран и по каким словам. */
               <div
-                className={`mt-4 rounded-md border px-4 py-3.5 ${
+                className={`mt-2 rounded-md border px-4 py-3.5 ${
                   !manual && match.confidence === 'слабое' ? 'border-line bg-rail' : 'border-accent-line bg-accent-soft'
                 }`}
               >
@@ -317,6 +364,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
               <CaseGenerator
                 brief={{ sphere: cfg.sphere, topic: cfg.topic, goal: cfg.opponentGoal }}
                 tone={cfg.tone}
+                emphasis={!isCustom && !manual && Boolean(query) && match.confidence === 'слабое'}
                 onCreated={created}
               />
 
@@ -363,7 +411,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
             </div>
 
             <div className="border-t border-line pt-6">
-              <div className="lbl mb-1">Настройка подобранного кейса</div>
+              <div className="lbl mb-1"><span className="text-accent">3</span> · Настройка кейса</div>
               <p className="text-caption leading-snug text-ink3">
                 Эти настройки меняют расчёт симуляции. Что изменилось, видно справа.
               </p>
@@ -378,6 +426,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                   <button
                     key={d}
                     onClick={() => set('difficulty', d)}
+                    aria-pressed={d === cfg.difficulty}
                     className={`press num h-11 flex-1 rounded-md border text-small md:h-9 ${
                       d === cfg.difficulty ? 'border-accent bg-accent font-semibold text-white' : 'border-line bg-surface text-ink2 hover:border-accent-line'
                     }`}
@@ -398,6 +447,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                   <button
                     key={t.value}
                     onClick={() => set('tone', t.value)}
+                    aria-pressed={t.value === cfg.tone}
                     className={`press rounded-md border px-3 py-2.5 text-left ${
                       t.value === cfg.tone ? 'border-accent bg-accent-soft' : 'border-line bg-surface hover:border-accent-line'
                     }`}
@@ -442,6 +492,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
               <div className="grid gap-1.5 sm:grid-cols-2">
                 <button
                   onClick={() => { setMode('auto'); saveMode('auto', base.id) }}
+                  aria-pressed={mode === 'auto'}
                   className={`press rounded-md border px-3 py-2.5 text-left ${
                     mode === 'auto' ? 'border-accent bg-accent-soft' : 'border-line bg-surface hover:border-accent-line'
                   }`}
@@ -455,6 +506,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                 </button>
                 <button
                   onClick={() => { setMode('offline'); saveMode('offline', base.id) }}
+                  aria-pressed={mode === 'offline'}
                   className={`press rounded-md border px-3 py-2.5 text-left ${
                     mode === 'offline' ? 'border-accent bg-accent-soft' : 'border-line bg-surface hover:border-accent-line'
                   }`}
@@ -478,7 +530,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
               <input type="number" min={4} max={24} className={field} value={cfg.rounds} onChange={(e) => set('rounds', Number(e.target.value))} />
             </label>
 
-            <LibraryPassport scenarios={scenarios} custom={custom} onImported={created} />
+            <LibraryPassport scenarios={scenarios} custom={custom} onImported={imported} />
           </div>
 
           {/* Проверка */}
@@ -552,7 +604,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
             </div>
 
             <div className="rounded-lg border border-line bg-surface px-5 py-4">
-              <div className="lbl mb-2">Ссылка для участников</div>
+              <div className="lbl mb-2"><span className="text-accent">4</span> · Ссылка для участников</div>
               <p className="text-caption leading-snug text-ink3">
                 Настройка зашита в сам адрес. Кто откроет ссылку, начнёт переговоры в этой конфигурации на своём
                 компьютере — без входа и без общей базы.
@@ -574,14 +626,59 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                       : 'border-line-strong bg-surface text-ink2 hover:border-accent hover:bg-accent-soft hover:text-accent'
                   }`}
                 >
-                  {copied ? 'Скопирована' : 'Скопировать'}
+                  <CopyLabel copied={copied} idle="Скопировать" />
                 </button>
               </div>
             </div>
           </div>
         </div>
+
+        {/* Телефон: проверка и карта ниже всех настроек, поэтому итог аудита
+            и вход в переговоры держатся у нижнего края — эффект каждой
+            настройки виден сразу. */}
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur lg:hidden">
+          <div className="mx-auto flex max-w-[640px] items-center gap-3">
+            <div className="min-w-0 flex-1" aria-live="polite">
+              <div className={`flex items-center gap-1.5 text-small font-semibold ${audit.playable ? 'text-accent' : 'text-danger'}`}>
+                {audit.playable ? (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6L9 17l-5-5" /></svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden><path d="M18 6L6 18M6 6l12 12" /></svg>
+                )}
+                {audit.playable ? 'Играбелен' : 'Требует доработки'}
+              </div>
+              <div className="num text-caption text-ink3">
+                зона <span key={audit.zopaShare} className="swap-in inline-block font-semibold text-ink2">{num(audit.zopaShare * 100)}%</span>
+              </div>
+            </div>
+            <a
+              href={playHref}
+              onClick={() => saveConfig(cfg)}
+              className={`press flex h-11 shrink-0 items-center rounded-md px-4 text-small font-semibold text-white ${
+                audit.playable ? 'bg-accent hover:opacity-90' : 'pointer-events-none bg-ink3'
+              }`}
+            >
+              Открыть переговоры
+            </a>
+          </div>
+        </div>
+        </>
       )}
     </main>
+  )
+}
+
+/** Подпись кнопки копирования: «Скопирована» с галочкой проявляется, а не подменяется рывком. */
+function CopyLabel({ copied, idle }: { copied: boolean; idle: string }) {
+  return copied ? (
+    <span key="done" className="swap-in inline-flex items-center gap-1.5">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M20 6L9 17l-5-5" />
+      </svg>
+      Скопирована
+    </span>
+  ) : (
+    <span key="idle" className="swap-in">{idle}</span>
   )
 }
 

@@ -33,10 +33,13 @@ const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 export function CaseGenerator({
   brief,
   tone,
+  emphasis = false,
   onCreated,
 }: {
   brief: { sphere: string; topic: string; goal: string }
   tone: Archetype
+  /** Подбор не нашёл близкого кейса — тогда создание нового и есть главный путь. */
+  emphasis?: boolean
   onCreated: (entry: CustomCase) => void
 }) {
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
@@ -149,7 +152,11 @@ export function CaseGenerator({
       <button
         onClick={run}
         disabled={empty}
-        className="press flex h-11 w-full items-center justify-center gap-2 rounded-md border border-accent-line bg-surface px-4 text-small font-semibold text-accent hover:border-accent hover:bg-accent-soft disabled:border-line disabled:text-ink3 disabled:hover:bg-surface md:h-10"
+        className={`press flex h-11 w-full items-center justify-center gap-2 rounded-md border px-4 text-small font-semibold disabled:border-line disabled:bg-surface disabled:text-ink3 md:h-10 ${
+          emphasis
+            ? 'border-accent bg-accent text-white hover:opacity-90'
+            : 'border-accent-line bg-surface text-accent hover:border-accent hover:bg-accent-soft disabled:hover:bg-surface'
+        }`}
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.5 2.5M15.2 15.2l2.5 2.5M6.3 17.7l2.5-2.5M15.2 8.8l2.5-2.5" />
@@ -168,7 +175,7 @@ export function CaseGenerator({
 function StepMark({ state }: { state: 'done' | 'active' | 'wait' }) {
   if (state === 'done') {
     return (
-      <span className="mt-px flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-accent text-white">
+      <span className="step-pop mt-px flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-accent text-white">
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <path d="M20 6L9 17l-5-5" />
         </svg>
