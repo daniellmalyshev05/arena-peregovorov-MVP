@@ -160,12 +160,15 @@ export function Compare({
           </div>
 
           <div className="rise mt-6 flex flex-wrap items-center gap-3.5 pb-6" style={{ animationDelay: '320ms' }}>
-            <a
-              href="/"
+            {/* Законченная партия в хранилище не держится, поэтому перезагрузка
+                открывает тот же кейс с той же настройкой — и с чистого листа. */}
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
               className="press flex h-[42px] items-center rounded-md bg-accent px-5 font-semibold text-white hover:bg-accent/92"
             >
               Начать зачётную сессию заново
-            </a>
+            </button>
             <button
               onClick={onRewindAnother}
               className="press flex h-[42px] items-center rounded-md border border-line bg-surface px-5 text-ink2 hover:border-accent-line"
