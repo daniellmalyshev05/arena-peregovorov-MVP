@@ -32,6 +32,12 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
   const [copied, setCopied] = useState(false)
   // Администратор выбрал кейс сам — подбор его не переключает.
   const [manual, setManual] = useState(false)
+  // Кейс выбран: подбором, вручную, созданием или из сохранённой настройки.
+  // До этого админка не притворяется, что кейс уже есть.
+  const [chosen, setChosen] = useState(false)
+  // Нажали «Создать», а описания нет — подсвечиваем поля и говорим, что заполнить.
+  const [needBrief, setNeedBrief] = useState(false)
+  const topicField = useRef<HTMLInputElement>(null)
   const [showLibrary, setShowLibrary] = useState(false)
   // Кейсы, созданные по описанию: лежат в этом браузере.
   const [custom, setCustom] = useState<CustomCase[]>([])
@@ -51,6 +57,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
       setCfg(stored)
       setSaved(true)
       setManual(true)
+      setChosen(true)
     }
     setOrigin(window.location.origin)
     setReady(true)
@@ -76,7 +83,8 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
   const nearest = ranked.filter((m) => m.score > 0).slice(0, 3)
 
   /** Переносит контекст и сложность на другой кейс, остальное берёт из него. */
-  const useCase = (next: Scenario) =>
+  const useCase = (next: Scenario) => {
+    setChosen(true)
     setCfg((c) => ({
       ...defaultConfig(next),
       sphere: c.sphere,
@@ -84,21 +92,38 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
       opponentGoal: c.opponentGoal,
       difficulty: c.difficulty,
     }))
+  }
 
   // Пока администратор не выбрал кейс руками, подбор ведёт его сам —
   // но только когда совпадение действительно есть.
   useEffect(() => {
     if (manual || !ready) return
     if (match.confidence === 'слабое') return
-    if (match.scenario.id === cfg.baseScenarioId) return
+    if (match.scenario.id === cfg.baseScenarioId) {
+      setChosen(true)
+      return
+    }
     useCase(match.scenario)
     setSaved(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [manual, ready, match.scenario.id, match.confidence])
+  }, [manual, ready, chosen, match.scenario.id, match.confidence])
 
   const set = <K extends keyof AdminConfig>(k: K, v: AdminConfig[K]) => {
     setCfg((c) => ({ ...c, [k]: v }))
     setSaved(false)
+    if (k === 'sphere' || k === 'topic' || k === 'opponentGoal') setNeedBrief(false)
+  }
+
+  /** Пример описания одним нажатием: видно, что сюда писать, и на показе не нужно набирать руками. */
+  const fillExample = (e: (typeof EXAMPLES)[number]) => {
+    setCfg((c) => ({ ...c, sphere: e.sphere, topic: e.topic, opponentGoal: e.goal }))
+    setSaved(false)
+    setNeedBrief(false)
+  }
+
+  const askForBrief = () => {
+    setNeedBrief(true)
+    topicField.current?.focus()
   }
 
   // Новый кейс сервер не знает, поэтому он открывается своей страницей;
@@ -150,8 +175,16 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
     removeCustom(base.id)
     setCustom(loadCustomCases())
     if (loadConfig()?.baseScenarioId === base.id) clearConfig()
+    // Кейса больше нет: снова пустой выбор, подбор подхватит описание, если совпадение есть.
     setManual(false)
-    useCase(match.scenario)
+    setChosen(false)
+    setCfg((c) => ({
+      ...defaultConfig(scenarios[0]),
+      sphere: c.sphere,
+      topic: c.topic,
+      opponentGoal: c.opponentGoal,
+      difficulty: c.difficulty,
+    }))
     setSaved(false)
   }
 
@@ -160,6 +193,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
     saveCustom(undo.entry)
     setCustom(loadCustomCases())
     setManual(true)
+    setChosen(true)
     setCfg(undo.cfg)
     setSaved(false)
     setUndo(null)
@@ -188,6 +222,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
   }
 
   const field = 'w-full min-w-0 rounded-md border border-line bg-surface px-3 py-2.5 text-small outline-none focus:border-accent-line md:py-2'
+  const briefField = needBrief ? `${field} border-accent ring-2 ring-accent/20` : field
   const nameLooksLikePhrase = cfg.opponentName.trim().split(/\s+/).filter(Boolean).length > 3
   const baseFemale = isFemaleName(base.persona.name.split(' ')[0])
   const newFirst = cfg.opponentName.trim().split(/\s+/)[0] ?? ''
@@ -226,17 +261,32 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <label className="block">
                   <span className="lbl mb-1.5 block">Сфера</span>
-                  <input className={field} value={cfg.sphere} onChange={(e) => set('sphere', e.target.value)} placeholder="Промышленность, строительство, закупки…" />
+                  <input className={briefField} value={cfg.sphere} onChange={(e) => set('sphere', e.target.value)} placeholder="Промышленность, строительство, закупки…" />
                 </label>
                 <label className="block">
                   <span className="lbl mb-1.5 block">Тема переговоров</span>
-                  <input className={field} value={cfg.topic} onChange={(e) => set('topic', e.target.value)} placeholder="О чём торг" />
+                  <input ref={topicField} className={briefField} value={cfg.topic} onChange={(e) => set('topic', e.target.value)} placeholder="О чём торг" />
                 </label>
               </div>
               <label className="mt-4 block">
                 <span className="lbl mb-1.5 block">Чего добивается вторая сторона</span>
-                <textarea className={field} rows={2} value={cfg.opponentGoal} onChange={(e) => set('opponentGoal', e.target.value)} placeholder="Например: поднять тариф на 15% и не обсуждать объёмы" />
+                <textarea className={briefField} rows={2} value={cfg.opponentGoal} onChange={(e) => set('opponentGoal', e.target.value)} placeholder="Например: поднять тариф на 15% и не обсуждать объёмы" />
               </label>
+              {needBrief && (
+                <p role="status" className="rise mt-2 text-caption font-semibold text-accent">Задайте ситуацию — модель напишет кейс.</p>
+              )}
+              <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                <span className="mr-1 text-caption text-ink3">Например:</span>
+                {EXAMPLES.map((e) => (
+                  <button
+                    key={e.label}
+                    onClick={() => fillExample(e)}
+                    className="press flex min-h-11 items-center rounded-full border border-line bg-surface px-3 text-caption text-ink2 hover:border-accent-line hover:text-accent md:min-h-8"
+                  >
+                    {e.label}
+                  </button>
+                ))}
+              </div>
 
               <div id="admin-case" className="lbl mt-6 scroll-mt-20"><span className="text-accent">2</span> · Кейс</div>
               {undo && (
@@ -310,6 +360,33 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                     )}
                   </div>
                 </div>
+              ) : !chosen ? (
+                <div className="rise mt-2 rounded-md border border-dashed border-line-strong bg-surface px-4 py-3.5">
+                  <div className="lbl mb-1.5">Кейс ещё не выбран</div>
+                  <p className="text-caption leading-snug text-ink2">
+                    Опишите ситуацию — подберётся кейс из библиотеки или создастся новый.
+                  </p>
+                  {query && nearest.length > 0 && (
+                    <div className="mt-2.5 flex flex-col gap-1.5">
+                      {nearest.map((m) => (
+                        <button
+                          key={m.scenario.id}
+                          onClick={() => { setManual(true); useCase(m.scenario); setSaved(false) }}
+                          className="press rounded-md border border-line bg-surface px-3 py-2 text-left hover:border-accent-line"
+                        >
+                          <span className="text-small">{m.scenario.title}</span>
+                          <span className="mt-0.5 block text-caption text-ink3">совпало: {m.matched.join(', ')}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setShowLibrary((v) => !v)}
+                    className="press mt-1.5 flex min-h-11 items-center text-caption font-semibold text-accent hover:underline md:min-h-0"
+                  >
+                    {showLibrary ? 'Свернуть библиотеку' : 'Выбрать кейс самому'}
+                  </button>
+                </div>
               ) : (
               /* Результат подбора: какой кейс выбран и по каким словам. */
               <div
@@ -377,6 +454,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                 brief={{ sphere: cfg.sphere, topic: cfg.topic, goal: cfg.opponentGoal }}
                 tone={cfg.tone}
                 emphasis={!isCustom && !manual && Boolean(query) && match.confidence === 'слабое'}
+                onEmpty={askForBrief}
                 onCreated={created}
               />
 
@@ -422,6 +500,8 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
               )}
             </div>
 
+            {chosen && (
+            <>
             <div className="border-t border-line pt-6">
               <div className="lbl mb-1"><span className="text-accent">3</span> · Настройка кейса</div>
               <p className="text-caption leading-snug text-ink3">
@@ -541,12 +621,27 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
               <span className="lbl mb-1.5 block">Раундов в сессии</span>
               <input type="number" min={4} max={24} className={field} value={cfg.rounds} onChange={(e) => set('rounds', Number(e.target.value))} />
             </label>
+            </>
+            )}
 
             <LibraryPassport scenarios={scenarios} custom={custom} onImported={imported} />
           </div>
 
           {/* Проверка */}
           <div className="flex flex-col gap-4 lg:sticky lg:top-8 lg:self-start">
+            {!chosen ? (
+              <div className="rounded-lg border border-dashed border-line-strong bg-surface px-5 py-8 text-center">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-faint)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="mx-auto" aria-hidden>
+                  <path d="M4 20V4M4 20h16" />
+                  <path d="M7 6c3 0 5 2 6.5 5S17 17 20 17" />
+                  <path d="M11 9h9v8" strokeDasharray="2 3" />
+                </svg>
+                <p className="mx-auto mt-3 max-w-[300px] text-small leading-snug text-ink3">
+                  Здесь появится проверка кейса: зона соглашения и карта позиционного торга.
+                </p>
+              </div>
+            ) : (
+            <>
             <div className={`rounded-lg border px-5 py-4 ${audit.playable ? 'border-accent-line bg-accent-soft' : 'border-danger bg-danger-soft'}`}>
               <div className="flex items-center gap-2">
                 {audit.playable ? (
@@ -642,12 +737,15 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                 </button>
               </div>
             </div>
+            </>
+            )}
           </div>
         </div>
 
         {/* Телефон: проверка и карта ниже всех настроек, поэтому итог аудита
             и вход в переговоры держатся у нижнего края — эффект каждой
             настройки виден сразу. */}
+        {chosen && (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur lg:hidden">
           <div className="mx-auto flex max-w-[640px] items-center gap-3">
             <div className="min-w-0 flex-1" aria-live="polite">
@@ -674,11 +772,34 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
             </a>
           </div>
         </div>
+        )}
         </>
       )}
     </main>
   )
 }
+
+/** Примеры описания под полями контекста. */
+const EXAMPLES = [
+  {
+    label: 'Аренда склада',
+    sphere: 'Логистика, аренда складов',
+    topic: 'Арендодатель поднимает ставку при продлении договора',
+    goal: 'поднять ставку аренды на 20% и сократить срок договора до года',
+  },
+  {
+    label: 'Сотрудник просит удалёнку',
+    sphere: 'Управление командой',
+    topic: 'Ведущий аналитик просит перевести его на полностью удалённую работу',
+    goal: 'работать полностью удалённо без потери в зарплате',
+  },
+  {
+    label: 'Подрядчик срывает сроки',
+    sphere: 'ИТ, внедрение систем',
+    topic: 'Подрядчик срывает сроки внедрения складской системы',
+    goal: 'перенести запуск на два месяца и получить доплату за изменения',
+  },
+] as const
 
 /** Подпись кнопки копирования: «Скопирована» с галочкой проявляется, а не подменяется рывком. */
 function CopyLabel({ copied, idle }: { copied: boolean; idle: string }) {

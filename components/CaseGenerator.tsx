@@ -34,12 +34,15 @@ export function CaseGenerator({
   brief,
   tone,
   emphasis = false,
+  onEmpty,
   onCreated,
 }: {
   brief: { sphere: string; topic: string; goal: string }
   tone: Archetype
   /** Подбор не нашёл близкого кейса — тогда создание нового и есть главный путь. */
   emphasis?: boolean
+  /** Описания нет: кнопка не немая, а показывает, что заполнить. */
+  onEmpty?: () => void
   onCreated: (entry: CustomCase) => void
 }) {
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
@@ -150,8 +153,7 @@ export function CaseGenerator({
         </p>
       )}
       <button
-        onClick={run}
-        disabled={empty}
+        onClick={() => (empty ? onEmpty?.() : void run())}
         className={`press flex h-11 w-full items-center justify-center gap-2 rounded-md border px-4 text-small font-semibold disabled:border-line disabled:bg-surface disabled:text-ink3 md:h-10 ${
           emphasis
             ? 'border-accent bg-accent text-white hover:opacity-90'
