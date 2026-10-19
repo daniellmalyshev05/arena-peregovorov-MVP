@@ -10,6 +10,9 @@ import { clearConfig, loadConfig, loadMode, saveConfig, saveMode, type OpponentM
 import { auditScenario } from '@/lib/engine/audit'
 import { num, signed } from '@/lib/text'
 import { ScenarioMap } from './ScenarioMap'
+import { CaseGenerator } from './CaseGenerator'
+import { loadCustomCases, removeCustom, saveCustom, type CustomCase } from '@/lib/admin/custom'
+import { CUSTOM_PREFIX } from '@/lib/admin/scenario-schema'
 
 /**
  * Контур администратора (ТЗ §2.2, §2.3).
@@ -28,10 +31,15 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
   // Администратор выбрал кейс сам — подбор его не переключает.
   const [manual, setManual] = useState(false)
   const [showLibrary, setShowLibrary] = useState(false)
+  // Кейсы, созданные по описанию: лежат в этом браузере.
+  const [custom, setCustom] = useState<CustomCase[]>([])
 
   useEffect(() => {
+    const created = loadCustomCases()
+    setCustom(created)
     const stored = loadConfig()
-    if (stored && scenarios.some((s) => s.id === stored.baseScenarioId)) {
+    const known = [...created.map((c) => c.scenario), ...scenarios]
+    if (stored && known.some((s) => s.id === stored.baseScenarioId)) {
       setCfg(stored)
       setSaved(true)
       setManual(true)
@@ -40,7 +48,11 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
     setReady(true)
   }, [scenarios])
 
-  const base = scenarios.find((s) => s.id === cfg.baseScenarioId) ?? scenarios[0]
+  const base =
+    custom.find((c) => c.scenario.id === cfg.baseScenarioId)?.scenario ??
+    scenarios.find((s) => s.id === cfg.baseScenarioId) ??
+    scenarios[0]
+  const isCustom = base.id.startsWith(CUSTOM_PREFIX)
 
   // Режим хранится при кейсе, поэтому перечитывается при смене кейса.
   useEffect(() => {
@@ -81,8 +93,39 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
     setSaved(false)
   }
 
+  // Новый кейс сервер не знает, поэтому он открывается своей страницей;
+  // настройка к нему читается из браузера.
+  const playHref = isCustom ? `/arena/custom?id=${base.id}` : `/arena/${base.id}?cfg=${encodeConfig(base, cfg, mode)}`
   // Ссылка пересобирается на каждое изменение: администратор всегда копирует то, что видит.
-  const link = origin ? `${origin}/arena/${base.id}?cfg=${encodeConfig(base, cfg, mode)}` : ''
+  const link = origin ? `${origin}${playHref}` : ''
+
+  const created = (entry: CustomCase) => {
+    saveCustom(entry)
+    setCustom(loadCustomCases())
+    setManual(true)
+    setShowLibrary(false)
+    useCase(entry.scenario)
+    setSaved(false)
+  }
+
+  const removeCase = () => {
+    removeCustom(base.id)
+    setCustom(loadCustomCases())
+    if (loadConfig()?.baseScenarioId === base.id) clearConfig()
+    setManual(false)
+    useCase(match.scenario)
+    setSaved(false)
+  }
+
+  const downloadCase = () => {
+    const blob = new Blob([JSON.stringify(base, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `arena-${base.id}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   const copyLink = async () => {
     try {
@@ -144,7 +187,46 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                 <textarea className={field} rows={2} value={cfg.opponentGoal} onChange={(e) => set('opponentGoal', e.target.value)} placeholder="Например: поднять тариф на 15% и не обсуждать объёмы" />
               </label>
 
-              {/* Результат подбора: какой кейс выбран и по каким словам. */}
+              {isCustom ? (
+                <div className="rise mt-4 rounded-md border border-accent-line bg-accent-soft px-4 py-3.5">
+                  <div className="lbl mb-1.5">Новый кейс</div>
+                  <div className="text-small font-semibold">{base.title}</div>
+                  <div className="mt-0.5 text-caption text-ink3">{base.subtitle}</div>
+                  <div className="mt-2 text-caption text-ink2">
+                    {base.persona.name} · {base.persona.role}
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <a
+                      href={playHref}
+                      onClick={() => saveConfig(cfg)}
+                      className={`press inline-flex h-11 items-center rounded-md px-4 text-caption font-semibold text-white md:h-9 ${
+                        audit.playable ? 'bg-accent hover:opacity-90' : 'pointer-events-none bg-ink3'
+                      }`}
+                    >
+                      Играть
+                    </a>
+                    <button
+                      onClick={downloadCase}
+                      className="press h-11 rounded-md border border-line-strong bg-surface px-3.5 text-caption font-semibold text-ink2 hover:border-accent hover:text-accent md:h-9"
+                    >
+                      Скачать JSON
+                    </button>
+                    <button
+                      onClick={removeCase}
+                      className="press ml-auto h-11 px-2 text-caption text-ink3 hover:text-danger md:h-9"
+                    >
+                      Удалить
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => setShowLibrary((v) => !v)}
+                    className="press mt-1.5 flex min-h-11 items-center text-caption font-semibold text-accent hover:underline md:min-h-0"
+                  >
+                    {showLibrary ? 'Свернуть библиотеку' : 'Выбрать кейс самому'}
+                  </button>
+                </div>
+              ) : (
+              /* Результат подбора: какой кейс выбран и по каким словам. */
               <div
                 className={`mt-4 rounded-md border px-4 py-3.5 ${
                   !manual && match.confidence === 'слабое' ? 'border-line bg-rail' : 'border-accent-line bg-accent-soft'
@@ -204,9 +286,33 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
                   )}
                 </div>
               </div>
+              )}
+
+              <CaseGenerator
+                brief={{ sphere: cfg.sphere, topic: cfg.topic, goal: cfg.opponentGoal }}
+                tone={cfg.tone}
+                onCreated={created}
+              />
 
               {showLibrary && (
                 <div className="mt-3 flex flex-col gap-1.5">
+                  {custom.map((c) => (
+                    <button
+                      key={c.scenario.id}
+                      onClick={() => { setManual(true); useCase(c.scenario); setSaved(false) }}
+                      className={`press rounded-md border px-3.5 py-2.5 text-left ${
+                        c.scenario.id === cfg.baseScenarioId ? 'border-accent bg-accent-soft' : 'border-line bg-surface hover:border-accent-line'
+                      }`}
+                    >
+                      <div className="flex items-baseline gap-2">
+                        <span className={`text-small ${c.scenario.id === cfg.baseScenarioId ? 'font-semibold text-accent' : ''}`}>
+                          {c.scenario.title}
+                        </span>
+                        <span className="lbl ml-auto shrink-0">новый кейс</span>
+                      </div>
+                      <div className="mt-0.5 text-caption text-ink3">{c.scenario.subtitle}</div>
+                    </button>
+                  ))}
                   {ranked.map((m) => (
                     <button
                       key={m.scenario.id}
@@ -401,7 +507,7 @@ export function AdminView({ scenarios }: { scenarios: Scenario[] }) {
 
             <div className="flex flex-wrap gap-2.5">
               <a
-                href={`/arena/${base.id}?cfg=${encodeConfig(base, cfg, mode)}`}
+                href={playHref}
                 onClick={() => saveConfig(cfg)}
                 className={`press flex h-11 flex-1 items-center justify-center rounded-md px-5 font-semibold text-white ${
                   audit.playable ? 'bg-accent hover:opacity-90' : 'pointer-events-none bg-ink3'
