@@ -18,7 +18,7 @@ import { ArenaClient } from './ArenaClient'
  * перезагрузка не сбросила сессию. С каждым ходом она уходит на сервер
  * (`configCode`): вердикты и промпт считаются там.
  */
-export function ArenaEntry({ base }: { base: Scenario }) {
+export function ArenaEntry({ base, voice }: { base: Scenario; voice: boolean }) {
   const [resolved, setResolved] = useState<{ scenario: Scenario; configured: boolean; configCode?: string } | null>(null)
 
   useEffect(() => {
@@ -45,6 +45,7 @@ export function ArenaEntry({ base }: { base: Scenario }) {
       key={`${resolved.scenario.title}|${resolved.scenario.archetype}|${resolved.scenario.userBatna.value}`}
       scenario={resolved.scenario}
       configCode={resolved.configCode}
+      voice={voice}
     />
   )
 }

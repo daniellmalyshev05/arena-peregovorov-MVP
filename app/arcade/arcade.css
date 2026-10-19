@@ -941,6 +941,64 @@
   100% { opacity: 1; transform: rotate(-8deg) scale(1); }
 }
 
+/*
+  Голос: микрофон рядом с «Отправить», на время записи поле уступает место
+  полосе с уровнем голоса. Красный — общепринятый знак записи.
+*/
+.arc-dock.has-voice { grid-template-columns: 1fr 56px 56px; }
+@media (min-width: 720px) {
+  .arc-dock.has-voice { grid-template-columns: 1fr 56px 56px auto; }
+}
+.arc-mic-wrap { position: relative; display: grid; }
+/* Общее правило аркады разрешает кнопкам жест прокрутки — удержание микрофона он оборвал бы. */
+.arc .voice-btn { touch-action: none; }
+.arc-mic {
+  position: relative;
+  height: 56px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: var(--n2);
+  border: 2px solid var(--n3);
+  color: var(--mist);
+  transition: transform 140ms var(--ease-out), background-color 150ms var(--ease-out),
+    border-color 150ms var(--ease-out), color 150ms var(--ease-out), opacity 150ms var(--ease-out);
+}
+.arc-mic:active:not(:disabled) { transform: scale(0.94); }
+.arc-mic:disabled { opacity: 0.4; }
+.arc-mic.is-rec { background: var(--hit); border-color: var(--hit); color: #fff; }
+@media (hover: hover) and (pointer: fine) {
+  .arc-mic:not(.is-rec):not(:disabled):hover { border-color: var(--you); color: var(--you); }
+}
+.arc-mic-ring { border-radius: 14px; background: #ff4b3e40; opacity: 0; }
+.arc-mic-ring.is-on { opacity: 1; }
+
+.arc-voice {
+  height: 56px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 18px;
+  border-radius: 14px;
+  background: var(--n2);
+  border: 2px solid var(--you);
+  animation: arc-voice-in 200ms var(--ease-out) both;
+}
+@keyframes arc-voice-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+.arc .voice-dot { background: var(--hit); }
+.arc-voice-label { flex-shrink: 0; font-size: 16px; color: #fff; }
+.arc-voice-meter { flex: 1; min-width: 0; color: var(--you); }
+.arc-voice-time { flex-shrink: 0; font-size: 15px; color: var(--mist); font-variant-numeric: tabular-nums; }
+.arc-voice-hint { display: none; flex-shrink: 0; font-size: 13px; color: #8b93c9; }
+@media (min-width: 1000px) {
+  .arc-voice-hint { display: inline; }
+}
+.arc-voice-error { text-align: center; color: var(--hit); font-size: 14px; }
+
 @media (prefers-reduced-motion: reduce) {
   .arc *,
   .arc *::before,

@@ -9,6 +9,8 @@ import { ARCADE_SECONDS, arcadeOpponents, getArcadeOpponent } from '@/lib/arcade
 import { accurateStrikes, appetite, charge, gain, lastStrikes, type Strike } from '@/lib/arcade/hud'
 import { clock, saveTime, setSound, soundOn } from '@/lib/arcade/records'
 import { plural } from '@/lib/plural'
+import { appendSpoken, formatVoiceTime, useVoiceInput } from '@/lib/voice'
+import { IconMic, IconStop, VoiceMeter } from '@/components/VoiceMeter'
 import { sfx, setSoundEnabled } from './sound'
 import { OfferPad } from './OfferPad'
 import { Brief } from './Brief'
@@ -43,7 +45,7 @@ function offerLine(opponentId: string, offer: Deal): string {
   return `Предлагаю пакет: ${parts.join(', ')}.`
 }
 
-export function ArcadeFight({ opponentId }: { opponentId: string }) {
+export function ArcadeFight({ opponentId, voice = false }: { opponentId: string; voice?: boolean }) {
   const opponent = getArcadeOpponent(opponentId)!
   const scenario = opponent.scenario
 
@@ -70,6 +72,25 @@ export function ArcadeFight({ opponentId }: { opponentId: string }) {
   secondsRef.current = seconds
   const fxId = useRef(0)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const focusAfterVoice = useRef(false)
+  const voiceInput = useVoiceInput({
+    enabled: phase === 'play' && !busy,
+    onText: (spoken) => {
+      setText((t) => appendSpoken(t, spoken).slice(0, 400))
+      focusAfterVoice.current = window.matchMedia('(pointer: fine)').matches
+    },
+  })
+  const showVoice = voice && voiceInput.supported
+  const transcribing = voiceInput.status === 'transcribing'
+  useEffect(() => {
+    if (voiceInput.active || !focusAfterVoice.current) return
+    focusAfterVoice.current = false
+    const el = inputRef.current
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(el.value.length, el.value.length)
+  }, [voiceInput.active, text])
 
   useEffect(() => {
     const on = soundOn()
@@ -107,9 +128,9 @@ export function ArcadeFight({ opponentId }: { opponentId: string }) {
     [opponentId],
   )
 
-  // Часы идут, только пока ход за игроком: ожидание ответа не съедает время.
+  // Часы идут, только пока ход за игроком: ожидание ответа и распознавания не съедает время.
   useEffect(() => {
-    if (phase !== 'play' || busy || help) return
+    if (phase !== 'play' || busy || help || transcribing) return
     let last = performance.now()
     const id = setInterval(() => {
       const now = performance.now()
@@ -124,7 +145,7 @@ export function ArcadeFight({ opponentId }: { opponentId: string }) {
       }
     }, 200)
     return () => clearInterval(id)
-  }, [phase, busy, help, finish])
+  }, [phase, busy, help, transcribing, finish])
 
   const send = useCallback(
     async (payload: { text: string; offer?: Deal }, offline = false) => {
@@ -435,8 +456,14 @@ export function ArcadeFight({ opponentId }: { opponentId: string }) {
               </div>
             )}
 
+            {voiceInput.error && (
+              <p className="arc-voice-error" role="status">
+                {voiceInput.error === 'denied' ? 'Нет доступа к микрофону' : 'Не расслышали, попробуйте ещё раз'}
+              </p>
+            )}
+
             <form
-              className="arc-dock"
+              className={`arc-dock${showVoice ? ' has-voice' : ''}`}
               onSubmit={(e) => {
                 e.preventDefault()
                 submit()
@@ -451,8 +478,49 @@ export function ArcadeFight({ opponentId }: { opponentId: string }) {
                 aria-label="Ваша реплика"
                 disabled={phase !== 'play'}
                 maxLength={400}
+                hidden={voiceInput.active}
               />
-              <button type="submit" className="arc-send" aria-label="Отправить" disabled={!text.trim() || busy || phase !== 'play'}>
+              {voiceInput.active && (
+                <div className="arc-voice" role="status">
+                  {!transcribing && <span className="voice-dot" aria-hidden />}
+                  <span className="arc-voice-label">{transcribing ? 'Распознаём…' : 'Говорите…'}</span>
+                  <VoiceMeter ref={voiceInput.meterRef} busy={transcribing} className="arc-voice-meter" />
+                  {voiceInput.status === 'recording' && (
+                    <>
+                      <span className="arc-voice-time">{formatVoiceTime(voiceInput.seconds)}</span>
+                      <span className="arc-voice-hint">
+                        {voiceInput.latched ? 'Нажмите ещё раз, чтобы вставить текст' : 'Отпустите, чтобы вставить текст'}
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
+              {showVoice && (
+                <span className="arc-mic-wrap">
+                  <span
+                    ref={voiceInput.ringRef}
+                    aria-hidden
+                    className={`voice-ring arc-mic-ring${voiceInput.status === 'recording' ? ' is-on' : ''}`}
+                  />
+                  <button
+                    type="button"
+                    {...voiceInput.buttonProps}
+                    className={`voice-btn arc-mic${voiceInput.status === 'recording' || voiceInput.status === 'starting' ? ' is-rec' : ''}`}
+                    disabled={busy || phase !== 'play' || transcribing}
+                    aria-label={voiceInput.latched ? 'Нажмите ещё раз, чтобы вставить текст' : 'Удерживайте и говорите'}
+                    aria-pressed={voiceInput.status === 'recording'}
+                    title="Удерживайте и говорите"
+                  >
+                    {voiceInput.latched ? <IconStop size={18} /> : <IconMic size={22} />}
+                  </button>
+                </span>
+              )}
+              <button
+                type="submit"
+                className="arc-send"
+                aria-label="Отправить"
+                disabled={!text.trim() || busy || phase !== 'play' || voiceInput.active}
+              >
                 <IconSend size={22} />
               </button>
               <button

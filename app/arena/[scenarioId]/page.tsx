@@ -6,5 +6,7 @@ export default async function ArenaPage({ params }: { params: Promise<{ scenario
   const { scenarioId } = await params
   const scenario = getScenario(scenarioId)
   if (!scenario) notFound()
-  return <ArenaEntry base={scenario} />
+  // Без ключа и в запасном режиме распознавать нечем — кнопки голоса нет.
+  const voice = process.env.DEMO_MODE !== 'true' && !!process.env.OPENROUTER_API_KEY
+  return <ArenaEntry base={scenario} voice={voice} />
 }

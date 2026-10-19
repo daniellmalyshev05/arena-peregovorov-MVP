@@ -20,6 +20,8 @@ import { FactRow } from './FactRow'
 import { decapitalize } from '@/lib/text'
 import { count } from '@/lib/plural'
 import { actTags } from '@/lib/techniques'
+import { appendSpoken, formatVoiceTime, useVoiceInput } from '@/lib/voice'
+import { IconMic, IconStop, VoiceMeter } from './VoiceMeter'
 
 /**
  * Тур по столу переговоров: три подсказки вместо модального онбординга.
@@ -71,7 +73,16 @@ function markTourSeen() {
   }
 }
 
-export function ArenaClient({ scenario, configCode }: { scenario: Scenario; configCode?: string }) {
+export function ArenaClient({
+  scenario,
+  configCode,
+  voice = false,
+}: {
+  scenario: Scenario
+  configCode?: string
+  /** Распознавание голоса доступно на сервере. */
+  voice?: boolean
+}) {
   const [state, setState] = useState<NegotiationState>(() => createInitialState(scenario))
 
   // Снапшот состояния ПЕРЕД каждым ходом игрока — на них держится развилка.
@@ -120,6 +131,26 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
   const [tour, setTour] = useState<number | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const feedRef = useRef<HTMLDivElement>(null)
+
+  // Сказанное падает в поле, отправляет игрок — после правки, если нужно.
+  const focusAfterVoice = useRef(false)
+  const voiceInput = useVoiceInput({
+    enabled: !busy && state.status === 'active',
+    onText: (spoken) => {
+      setText((t) => appendSpoken(t, spoken))
+      // На телефоне фокус поднял бы клавиатуру поверх стола: там игрок сразу жмёт «Отправить».
+      focusAfterVoice.current = window.matchMedia('(pointer: fine)').matches
+    },
+  })
+  const showVoice = voice && mode !== 'offline' && voiceInput.supported
+  useEffect(() => {
+    if (voiceInput.active || !focusAfterVoice.current) return
+    focusAfterVoice.current = false
+    const el = inputRef.current
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(el.value.length, el.value.length)
+  }, [voiceInput.active, text])
 
   // Подпись сессии: кейс вместе с настройкой администратора. Другая настройка —
   // другая симуляция, поднимать в ней сохранённый разговор нельзя.
@@ -982,7 +1013,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
 
           {/* Рабочая зона: что можно сделать сейчас, поле ответа и два хода — сказать или предложить пакет. */}
           <div className="flex shrink-0 flex-col gap-2 px-4 pb-4 pt-2 md:px-6 md:pb-5 lg:px-10">
-            {(offline || restored) && (
+            {(offline || restored || voiceInput.error) && (
               <div className="flex items-center gap-3 px-1">
                 {restored && (
                   <span className="text-caption text-ink-faint">партия восстановлена после перезагрузки</span>
@@ -995,6 +1026,11 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
                       : 'Модель не ответила, ход отыграл запасной движок. Причина — в консоли сервера.'}
                   >
                     {mode === 'offline' ? 'запасной режим' : 'ответил запасной движок'}
+                  </span>
+                )}
+                {voiceInput.error && (
+                  <span role="status" className="rise text-caption text-danger">
+                    {voiceInput.error === 'denied' ? 'Нет доступа к микрофону' : 'Не расслышали, попробуйте ещё раз'}
                   </span>
                 )}
               </div>
@@ -1052,8 +1088,55 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
                   rows={1}
                   disabled={busy || state.status !== 'active'}
                   placeholder="Напишите ответ…"
-                  className="max-h-32 min-h-[44px] w-full min-w-0 flex-1 resize-none bg-transparent px-2.5 py-3 outline-none placeholder:text-ink3 focus-visible:outline-none disabled:opacity-50"
+                  className={`max-h-32 min-h-[44px] w-full min-w-0 flex-1 resize-none bg-transparent px-2.5 py-3 outline-none placeholder:text-ink3 focus-visible:outline-none disabled:opacity-50 ${
+                    voiceInput.active ? 'hidden' : ''
+                  }`}
                 />
+                {voiceInput.active && (
+                  <div role="status" className="rise flex min-h-[44px] min-w-0 flex-1 items-center gap-2.5 px-2.5">
+                    {voiceInput.status !== 'transcribing' && <span className="voice-dot" aria-hidden />}
+                    <span className="shrink-0 text-small text-ink">
+                      {voiceInput.status === 'transcribing' ? 'Распознаём…' : 'Говорите…'}
+                    </span>
+                    <VoiceMeter
+                      ref={voiceInput.meterRef}
+                      busy={voiceInput.status === 'transcribing'}
+                      className="min-w-0 flex-1 text-accent"
+                    />
+                    {voiceInput.status === 'recording' && (
+                      <>
+                        <span className="mono shrink-0 text-caption text-ink2">{formatVoiceTime(voiceInput.seconds)}</span>
+                        <span className="hidden shrink-0 text-caption text-ink3 lg:inline">
+                          {voiceInput.latched ? 'Нажмите ещё раз, чтобы вставить текст' : 'Отпустите, чтобы вставить текст'}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                )}
+                {showVoice && (
+                  <span className="relative shrink-0">
+                    <span
+                      ref={voiceInput.ringRef}
+                      aria-hidden
+                      className={`voice-ring rounded-md bg-accent/20 ${voiceInput.status === 'recording' ? 'opacity-100' : 'opacity-0'}`}
+                    />
+                    <button
+                      type="button"
+                      {...voiceInput.buttonProps}
+                      disabled={busy || state.status !== 'active' || voiceInput.status === 'transcribing'}
+                      aria-label={voiceInput.latched ? 'Нажмите ещё раз, чтобы вставить текст' : 'Удерживайте и говорите'}
+                      aria-pressed={voiceInput.status === 'recording'}
+                      title="Удерживайте и говорите"
+                      className={`voice-btn press relative flex h-11 w-11 items-center justify-center rounded-md border ${
+                        voiceInput.status === 'recording' || voiceInput.status === 'starting'
+                          ? 'border-accent bg-accent text-white'
+                          : 'border-line-strong bg-surface text-ink2 hover:border-accent hover:text-accent disabled:text-ink3 disabled:hover:border-line-strong disabled:hover:text-ink3'
+                      }`}
+                    >
+                      {voiceInput.latched ? <IconStop /> : <IconMic />}
+                    </button>
+                  </span>
+                )}
                 <button
                   onClick={() => setSheet(true)}
                   disabled={state.visibleIssues.length < 2 || state.status !== 'active'}
@@ -1076,7 +1159,7 @@ export function ArenaClient({ scenario, configCode }: { scenario: Scenario; conf
                       void send({ userText: v })
                     }
                   }}
-                  disabled={busy || !text.trim() || state.status !== 'active'}
+                  disabled={busy || !text.trim() || state.status !== 'active' || voiceInput.active}
                   aria-label="Отправить"
                   className="press flex h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-md bg-accent px-3 font-semibold text-white hover:bg-accent/92 disabled:opacity-30 sm:px-5"
                 >
