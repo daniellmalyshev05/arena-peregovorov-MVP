@@ -154,12 +154,18 @@ export function DealPanel({
                     <span className="lbl rounded-sm border border-accent-line px-[5px] py-px text-accent">новое</span>
                   )}
                 </span>
-                <span className="num flex items-baseline justify-end gap-[7px] text-right text-small text-balance">
+                <span
+                  className={`num flex min-w-0 text-right text-small text-balance ${
+                    prev ? 'flex-col items-end gap-0.5' : 'items-baseline justify-end'
+                  }`}
+                >
                   {prev && (
                     <span className="text-ink3 line-through decoration-danger">{prev.label}</span>
                   )}
-                  {prev && <span className="text-ink3">→</span>}
-                  <span className="font-semibold">{current.label}</span>
+                  <span className="font-semibold">
+                    {prev && <span className="font-normal text-ink3">→ </span>}
+                    {current.label}
+                  </span>
                 </span>
               </div>
             )
