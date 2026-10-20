@@ -1,4 +1,4 @@
-import type { NegotiationState, Scenario, Turn } from '@/lib/types'
+import type { HiddenInterest, NegotiationState, Scenario, SpeechAct, Turn } from '@/lib/types'
 import { analyze } from './utility'
 import { num } from '@/lib/text'
 
@@ -124,7 +124,8 @@ export function rewindCandidates(scenario: Scenario, state: NegotiationState): R
 
   // 6. Интерес, который так и остался нераскрытым. Момент — реплика без находки
   // и без пакета: ход, раскрывший интерес, не может быть местом, где «не копнули».
-  const missedCount = scenario.hiddenInterests.filter((h) => !state.revealedInterests.includes(h.id)).length
+  const missed = scenario.hiddenInterests.filter((h) => !state.revealedInterests.includes(h.id))
+  const missedCount = missed.length
   if (missedCount && out.length < 3) {
     const quiet = userTurns.filter(
       (t) =>
@@ -137,16 +138,17 @@ export function rewindCandidates(scenario: Scenario, state: NegotiationState): R
     )
     const moment = quiet[Math.floor((quiet.length - 1) / 2)]
     if (moment) {
+      const key = keyFor(missed, moment.acts)
       out.push({
         turnIndex: moment.index,
         kind: 'missed_interest',
         title: 'Здесь можно было копнуть глубже',
         why:
           missedCount === scenario.hiddenInterests.length
-            ? 'Ни один интерес второй стороны вы так и не нашли. Вопрос о последствиях открыл бы первый.'
+            ? `Ни один интерес второй стороны вы так и не нашли. Первый из них открывает ${key}.`
             : missedCount === 1
-              ? 'Один из интересов второй стороны вы так и не нашли. Вопрос о последствиях открыл бы его.'
-              : `Не найдено интересов второй стороны: ${missedCount} из ${scenario.hiddenInterests.length}. Вопрос о последствиях открыл бы хотя бы один.`,
+              ? `Один из интересов второй стороны вы так и не нашли. Его открывает ${key}.`
+              : `Не найдено интересов второй стороны: ${missedCount} из ${scenario.hiddenInterests.length}. Хотя бы один из них открывает ${key}.`,
       })
     }
   }
@@ -193,4 +195,33 @@ export function momentContext(state: NegotiationState, turnIndex: number) {
     .pop()
   const after = state.transcript.find((t) => t.index === turnIndex + 1)
   return { turn, before, after }
+}
+
+/** Какой ход открывает интерес — словами, без названий методик. */
+const KEY_PHRASE: Partial<Record<SpeechAct, string>> = {
+  spin_situation: 'вопрос о текущей ситуации',
+  spin_problem: 'вопрос о том, что сейчас мешает',
+  spin_implication: 'вопрос о последствиях',
+  spin_needpayoff: 'вопрос о том, что даст решение',
+  authority_check: 'вопрос о том, кто принимает решение',
+  active_listening: 'пересказ услышанного своими словами',
+  objective_criterion: 'довод с опорой на факт',
+  conditional_offer: 'предложение обмена',
+}
+
+/**
+ * Подсказка для нераскрытого интереса. Берётся тот интерес, который можно было
+ * открыть не тем ходом, что сделан в этот момент: иначе совет противоречит
+ * цитате под ним.
+ */
+function keyFor(missed: HiddenInterest[], madeActs: SpeechAct[]): string {
+  const phrases = (h: HiddenInterest) =>
+    h.unlockedBy.filter((a) => !madeActs.includes(a)).map((a) => KEY_PHRASE[a]).filter((p): p is string => !!p)
+  const target = missed.find((h) => phrases(h).length) ?? missed[0]
+  const list = phrases(target)
+  const pick = list.length ? list : target.unlockedBy.map((a) => KEY_PHRASE[a]).filter((p): p is string => !!p)
+  if (!pick.length) return 'точный вопрос по существу'
+  const [first, second] = pick
+  // «вопрос о том, что мешает, или…» — придаточное закрывается запятой.
+  return second ? `${first}${first.includes(',') ? ',' : ''} или ${second}` : first
 }

@@ -80,6 +80,18 @@ console.log('Разбор ответа модели\n')
   check(r.repairs.some((x) => x.includes('прозой')), 'ответ прозой отмечен в починках')
 }
 
+// 5а. Рассуждения модели вместо реплики игроку не показываются.
+{
+  const leaked = [
+    ', not guaranteed volume as a contract term.\n    *   More importantly, is this question genuinely SPIN implication or a threat/walkaway?\n    *   "Если мы не договоримся" - this is literally the classic threat',
+    'The user is asking about the price. I should stay in character and answer briefly.',
+    '- Пользователь спрашивает о цене\n- Нужно ответить коротко',
+  ]
+  for (const raw of leaked) check(parseLlmTurn(raw).turn === null, `рассуждения не стали репликой: «${raw.slice(0, 40)}…»`)
+  const brand = parseLlmTurn('Без SLA и выгрузки в 1С я это совету не понесу.')
+  check(brand.turn !== null, 'русская реплика с латинскими сокращениями не выброшена')
+}
+
 // 6. Обрывок без реплики выбрасывается — притворяться нечем.
 {
   const cases = ['', '   ', '{', '{"detectedActs": ["bluff"]}', '{"reply": ""}', '```json\n{\n  "det']

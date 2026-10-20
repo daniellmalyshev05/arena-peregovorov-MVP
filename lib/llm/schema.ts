@@ -140,9 +140,17 @@ export function parseLlmTurn(raw: string): ParseOutcome {
   return { turn: { reply, detectedActs, revealedInterests, proposedDeal, userOffer, stateDelta }, repairs }
 }
 
-/** Похоже на реплику человека, а не на служебный мусор. */
+/**
+ * Проза без JSON принимается за реплику, только если это русская речь.
+ * Иногда модель вместо ответа выдаёт свои рассуждения — по-английски и
+ * списком. Показывать такое игроку нельзя: ход доигрывает запасной движок.
+ */
 function looksLikeSpeech(text: string): boolean {
-  return text.length >= 2 && text.length <= 2000 && /[a-zA-Zа-яёА-ЯЁ]/.test(text)
+  if (text.length < 2 || text.length > 2000) return false
+  if (/^\s*([*•-]|\d+\.)\s/m.test(text)) return false
+  const cyrillic = (text.match(/[а-яё]/gi) ?? []).length
+  const latin = (text.match(/[a-z]/gi) ?? []).length
+  return cyrillic > 0 && latin <= cyrillic * 0.2
 }
 
 const ACT_PATTERN = new RegExp(`"(${SPEECH_ACTS.join('|')})"`, 'g')
