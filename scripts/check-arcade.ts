@@ -111,6 +111,9 @@ console.log('\nАчивки')
   const all = { ...seen, transcript: [turn(['spin_problem']), turn([], 'accept')] }
   const top = ids(all, true, 10, 30)
   check(top.length === 3 && top[0] === 'all_revealed', 'не больше трёх, самые редкие первыми')
+  check(ids(clean, true, 10, 30)[0] === 'record', 'новый рекорд не вытесняется частыми ачивками')
+  check(!ids(clean, true, 29.2).includes('blitz') && ids(clean, true, 28.6).includes('blitz'), 'время считается как на экране: 29,2 с — это 0:30, «Блица» нет')
+  check(!ids(clean, true, 29.2, 30).includes('record'), 'показанные 0:30 против рекорда 0:30 — не рекорд')
   check(ids({ ...base, transcript: [turn(['spin_problem'])] }, false, 120).length === 0, 'один ход без находок — без ачивок')
 }
 

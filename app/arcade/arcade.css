@@ -839,6 +839,19 @@
   line-height: 1.25;
   color: #e6e9ff;
 }
+/* На телефоне итог с ачивками должен помещаться в экран вместе с кнопками. */
+@media (max-width: 480px) {
+  .arc-result { gap: 10px; }
+  .arc-awards { flex-wrap: wrap; gap: 8px 14px; }
+  .arc-awards li { width: auto; gap: 6px; }
+  .arc-medal { width: 44px; height: 44px; }
+  .arc-medal svg { width: 24px; height: 24px; }
+  .arc-award-label { font-size: 12px; white-space: nowrap; }
+}
+@media (min-width: 380px) and (max-width: 480px) {
+  .arc-stats { gap: 14px; }
+  .arc-stats dt { font-size: 12px; white-space: nowrap; }
+}
 
 /* шторка пакета и подтверждение */
 

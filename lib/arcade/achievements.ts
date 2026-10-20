@@ -4,8 +4,8 @@ import { strikesOf } from './hud'
 
 /**
  * Ачивки за одну партию аркады. Считаются только по итогу: движок и рекорды
- * не меняются. Порядок — от редкой к частой: если заработано больше трёх,
- * на экран попадают три самые редкие.
+ * не меняются. Порядок — от редкой к частой, рекорд сразу за полным раскрытием:
+ * если заработано больше трёх, на экран попадают первые три.
  */
 export type AchievementId = 'all_revealed' | 'first_package' | 'no_concession' | 'blitz' | 'record' | 'no_pressure'
 
@@ -16,10 +16,10 @@ export interface Achievement {
 
 const LABEL: Record<AchievementId, string> = {
   all_revealed: 'Видит насквозь',
+  record: 'Новый рекорд',
   first_package: 'С первого пакета',
   no_concession: 'Без единой уступки',
   blitz: 'Блиц',
-  record: 'Новый рекорд',
   no_pressure: 'Без давления',
 }
 
@@ -40,7 +40,8 @@ export function achievements(input: {
   const userTurns = state.transcript.filter((t) => t.role === 'user')
   const packages = userTurns.filter((t) => t.verdict)
   const total = opponent.scenario.hiddenInterests.length
-  const time = Math.round(seconds)
+  // Как на экране итога: время округляется вверх до секунды.
+  const time = Math.ceil(seconds)
 
   const earned: Record<AchievementId, boolean> = {
     all_revealed: total > 0 && state.revealedInterests.length >= total,

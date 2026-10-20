@@ -134,7 +134,8 @@ export function ArcadeFight({ opponentId, voice = false }: { opponentId: string;
       // Вышел сам — партия не доиграна, ачивок нет.
       setAwards(kind === 'exit' ? [] : achievements({ opponent, state: final, deal: kind === 'deal', seconds: used, previousBest }))
       if (kind === 'deal') {
-        saveTime(opponentId, Math.round(used))
+        // Рекорд пишется так же, как время показано в итоге: с округлением вверх.
+        saveTime(opponentId, Math.ceil(used))
         sfx.ko()
       } else {
         sfx.lose()
