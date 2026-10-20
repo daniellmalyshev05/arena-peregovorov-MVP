@@ -790,6 +790,56 @@
 }
 .arc-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
 
+/* ачивки за партию: по одной после штампа, по каждой один раз пробегает блик */
+
+.arc-awards {
+  display: flex;
+  gap: clamp(12px, 4vw, 24px);
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.arc-awards li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 96px;
+  text-align: center;
+  animation: arc-medal 320ms var(--ease-out) 640ms both;
+}
+.arc-awards li:nth-child(2) { animation-delay: 760ms; }
+.arc-awards li:nth-child(3) { animation-delay: 880ms; }
+.arc-medal {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  overflow: hidden;
+  border-radius: 50%;
+  color: var(--gold);
+  background: radial-gradient(circle at 50% 35%, var(--n3), var(--n1) 75%);
+  box-shadow: inset 0 0 0 2px var(--gold), 0 0 0 4px var(--n0), 0 0 24px #ffd23f40;
+}
+.arc-medal::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 35%, #ffffff66 50%, transparent 65%);
+  transform: translateX(-120%);
+  animation: arc-shine 700ms var(--ease-out) 860ms both;
+}
+.arc-awards li:nth-child(2) .arc-medal::after { animation-delay: 980ms; }
+.arc-awards li:nth-child(3) .arc-medal::after { animation-delay: 1100ms; }
+.arc-award-label {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: #e6e9ff;
+}
+
 /* шторка пакета и подтверждение */
 
 .arc-scrim {
@@ -856,6 +906,8 @@
 /* ── движение ─────────────────────────────────────────── */
 
 @keyframes arc-rise { from { opacity: 0; transform: translateY(10px); } }
+@keyframes arc-medal { from { opacity: 0; transform: translateY(8px) scale(0.9); } }
+@keyframes arc-shine { from { transform: translateX(-120%); } to { transform: translateX(120%); } }
 @keyframes arc-fade { from { opacity: 0; } }
 @keyframes arc-drop { from { opacity: 0; transform: translateY(-14px) scale(0.96); } }
 @keyframes arc-enter { from { opacity: 0; transform: scale(0.94); } }

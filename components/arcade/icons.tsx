@@ -180,3 +180,30 @@ export function LessonIcon({ lesson, size }: { lesson: 'exchange' | 'questions' 
   if (lesson === 'questions') return <IconQuestion size={size} />
   return <IconCriterion size={size} />
 }
+
+export function IconEye({ size }: IconProps) {
+  return (
+    <svg {...sized(size)}>
+      <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  )
+}
+
+export function IconTrophy({ size }: IconProps) {
+  return (
+    <svg {...sized(size)}>
+      <path d="M7 4h10v5a5 5 0 0 1-10 0z" />
+      <path d="M7 6H4.5a2.5 2.5 0 0 0 2.6 4M17 6h2.5a2.5 2.5 0 0 1-2.6 4M12 14v3.5M8.5 20.5h7M9.5 17.5h5" />
+    </svg>
+  )
+}
+
+export function IconFeather({ size }: IconProps) {
+  return (
+    <svg {...sized(size)}>
+      <path d="M20 4c-7 0-13 4.5-14.5 12.5L4 20l3.5-1.5C15.5 17 20 11 20 4z" />
+      <path d="M6.5 17.5 14 10" />
+    </svg>
+  )
+}

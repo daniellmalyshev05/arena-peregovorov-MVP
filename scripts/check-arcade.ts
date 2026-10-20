@@ -8,6 +8,7 @@ import { arcadeOpponents, ARCADE_ROUNDS } from '../lib/arcade/opponents'
 import { buildArcadePrompt, phaseOf, trapFor } from '../lib/arcade/prompt'
 import { appetite, strikesOf } from '../lib/arcade/hud'
 import { auditScenario } from '../lib/engine/audit'
+import { achievements, BLITZ_SECONDS } from '../lib/arcade/achievements'
 import { applyTurn, createInitialState, evaluateOffer } from '../lib/engine/state'
 import { offlineTurn } from '../lib/llm/offline'
 import { scenarios } from '../lib/scenarios'
@@ -76,6 +77,42 @@ check(!!trapFor(king, 2) && !!trapFor(king, 4) && !trapFor(king, 3), 'ловуш
 console.log('\nУдары')
 check(strikesOf(['spin_problem', 'spin_situation']).length === 1, 'два вопроса — один удар')
 check(strikesOf(['unilateral_concession', 'spin_problem'])[0].good, 'точные удары идут первыми')
+
+console.log('\nАчивки')
+{
+  const o = arcadeOpponents[0]
+  const s = o.scenario
+  const turn = (acts: string[], verdict?: 'accept' | 'counter' | 'reject') =>
+    ({ index: 0, role: 'user', text: '', acts, dealChanges: [], revealed: [], verdict, timestamp: 0 }) as never
+  const base = createInitialState(s)
+  const ids = (st: typeof base, deal: boolean, seconds: number, previousBest?: number) =>
+    achievements({ opponent: o, state: st, deal, seconds, previousBest }).map((a) => a.id)
+
+  const clean = { ...base, transcript: [turn(['spin_problem']), turn(['conditional_offer'], 'accept')] }
+  const got = ids(clean, true, 45)
+  check(got.includes('first_package') && got.includes('no_concession') && got.includes('no_pressure'), 'чистая сделка с первого пакета')
+  check(!got.includes('blitz') && !got.includes('record'), 'без «Блица» и рекорда, если не заслужены')
+  check(ids(clean, true, BLITZ_SECONDS - 1).includes('blitz'), `«Блиц» — быстрее ${BLITZ_SECONDS} секунд`)
+  check(!ids(clean, true, 20).includes('record'), 'первая сделка у соперника — не рекорд')
+  check(ids(clean, true, 40, 45).includes('record') && !ids(clean, true, 45, 45).includes('record'), 'рекорд — только если побит прежний')
+
+  const two = { ...base, transcript: [turn([], 'counter'), turn(['spin_problem']), turn([], 'accept')] }
+  check(!ids(two, true, 45).includes('first_package'), 'со второго пакета — не «С первого пакета»')
+  const rude = { ...base, transcript: [turn(['personal_attack']), turn(['spin_problem'], 'accept')] }
+  check(!ids(rude, true, 45).includes('no_pressure'), 'давление снимает «Без давления»')
+  const gave = { ...base, unilateralConcessions: 1, transcript: [turn(['unilateral_concession']), turn([], 'accept')] }
+  check(!ids(gave, true, 45).includes('no_concession'), 'уступка даром снимает «Без единой уступки»')
+
+  const seen = { ...base, revealedInterests: s.hiddenInterests.map((h) => h.id), transcript: [turn(['spin_problem']), turn(['spin_situation'])] }
+  const lost = ids(seen, false, 120)
+  check(lost.includes('all_revealed') && lost.includes('no_pressure'), 'без сделки — только «Видит насквозь» и «Без давления»')
+  check(!lost.some((id) => id === 'first_package' || id === 'no_concession' || id === 'blitz' || id === 'record'), 'сделочные ачивки без сделки не даются')
+
+  const all = { ...seen, transcript: [turn(['spin_problem']), turn([], 'accept')] }
+  const top = ids(all, true, 10, 30)
+  check(top.length === 3 && top[0] === 'all_revealed', 'не больше трёх, самые редкие первыми')
+  check(ids({ ...base, transcript: [turn(['spin_problem'])] }, false, 120).length === 0, 'один ход без находок — без ачивок')
+}
 
 console.log()
 if (failures) {

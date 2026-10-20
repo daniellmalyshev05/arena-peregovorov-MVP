@@ -7,14 +7,15 @@ import { createInitialState, endNow, walkAway } from '@/lib/engine/state'
 import { optionOf } from '@/lib/engine/utility'
 import { ARCADE_SECONDS, arcadeOpponents, getArcadeOpponent } from '@/lib/arcade/opponents'
 import { accurateStrikes, appetite, charge, gain, lastStrikes, type Strike } from '@/lib/arcade/hud'
-import { clock, saveTime, setSound, soundOn } from '@/lib/arcade/records'
+import { bestTimes, clock, saveTime, setSound, soundOn } from '@/lib/arcade/records'
+import { achievements, type Achievement, type AchievementId } from '@/lib/arcade/achievements'
 import { plural } from '@/lib/plural'
 import { appendSpoken, formatVoiceTime, useVoiceInput } from '@/lib/voice'
 import { IconMic, IconStop, VoiceMeter } from '@/components/VoiceMeter'
 import { sfx, setSoundEnabled } from './sound'
 import { OfferPad } from './OfferPad'
 import { Brief } from './Brief'
-import { IconBolt, IconClose, IconHelp, IconLock, IconPackage, IconSend, IconShield, IconSound, StrikeIcon } from './icons'
+import { IconBolt, IconClose, IconEye, IconFeather, IconHelp, IconLock, IconPackage, IconSend, IconShield, IconSound, IconTrophy, StrikeIcon } from './icons'
 
 type Phase = 'intro' | 'brief' | 'play' | 'over'
 type Ending = 'deal' | 'time' | 'rounds' | 'exit'
@@ -37,6 +38,15 @@ const LESSON_PRACTICE = { exchange: 'обмен', questions: 'вопросы', c
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+const AWARD_ICON: Record<AchievementId, () => React.ReactNode> = {
+  all_revealed: () => <IconEye size={28} />,
+  first_package: () => <IconPackage size={28} />,
+  no_concession: () => <IconShield size={28} />,
+  blitz: () => <IconBolt size={28} />,
+  record: () => <IconTrophy size={28} />,
+  no_pressure: () => <IconFeather size={28} />,
+}
+
 function offerLine(opponentId: string, offer: Deal): string {
   const s = getArcadeOpponent(opponentId)!.scenario
   const parts = s.issues
@@ -54,6 +64,7 @@ export function ArcadeFight({ opponentId, voice = false }: { opponentId: string;
   const [ending, setEnding] = useState<Ending | null>(null)
   const [seconds, setSeconds] = useState(ARCADE_SECONDS)
   const [spent, setSpent] = useState(0)
+  const [awards, setAwards] = useState<Achievement[]>([])
   const [busy, setBusy] = useState(false)
   const [pending, setPending] = useState<string | null>(null)
   const [text, setText] = useState('')
@@ -118,6 +129,10 @@ export function ArcadeFight({ opponentId, voice = false }: { opponentId: string;
       setConfirmExit(false)
       const used = ARCADE_SECONDS - secondsRef.current
       setSpent(used)
+      // Прежний рекорд читаем до записи нового: иначе «Новый рекорд» не с чем сравнить.
+      const previousBest = bestTimes()[opponentId]
+      // Вышел сам — партия не доиграна, ачивок нет.
+      setAwards(kind === 'exit' ? [] : achievements({ opponent, state: final, deal: kind === 'deal', seconds: used, previousBest }))
       if (kind === 'deal') {
         saveTime(opponentId, Math.round(used))
         sfx.ko()
@@ -125,7 +140,7 @@ export function ArcadeFight({ opponentId, voice = false }: { opponentId: string;
         sfx.lose()
       }
     },
-    [opponentId],
+    [opponent, opponentId],
   )
 
   // Часы идут, только пока ход за игроком: ожидание ответа и распознавания не съедает время.
@@ -229,6 +244,7 @@ export function ArcadeFight({ opponentId, voice = false }: { opponentId: string;
     setSeconds(ARCADE_SECONDS)
     secondsRef.current = ARCADE_SECONDS
     setEnding(null)
+    setAwards([])
     setFx(null)
     setFlash(null)
     setText('')
@@ -542,6 +558,16 @@ export function ArcadeFight({ opponentId, voice = false }: { opponentId: string;
           </>
         ) : (
           <div className="arc-result">
+            {awards.length > 0 && (
+              <ul className="arc-awards" aria-label="Ачивки за партию">
+                {awards.map((a) => (
+                  <li key={a.id}>
+                    <span className="arc-medal">{AWARD_ICON[a.id]()}</span>
+                    <span className="arc-award-label">{a.label}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
             <dl className="arc-stats">
               <div>
                 <dt>на переговоры</dt>
