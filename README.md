@@ -2,7 +2,7 @@
 
 **Попробовать онлайн:** https://arena-peregovorov-mvp.vercel.app
 
-Прототип размещён на зарубежном хостинге (Vercel). Если страница загружается не полностью, откройте её из другой сети/IP-адреса. Запись демо — тут: https://drive.google.com/file/d/1Fak9lMS5u6m9R8c2C9sjI3OibFI6j_xH/view?usp=sharing
+Прототип размещён на зарубежном хостинге (Vercel). Если страница загружается не полностью, откройте её из другой сети/IP-адреса. Презентация: https://docs.google.com/presentation/d/1fZvtJdSO1auMwcWlnV2x-tCVKslNiiI9/edit?usp=sharing&ouid=117922462466205107820&rtpof=true&sd=true
 
 **Документация для жюри:** [docs/README.md](docs/README.md)
 
